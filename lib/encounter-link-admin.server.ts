@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
 import { emitEvent } from '@/lib/event-store';
 import { bumpLiveRevisions } from '@/lib/live-updates.server';

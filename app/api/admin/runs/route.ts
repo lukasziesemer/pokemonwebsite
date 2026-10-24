@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import { withAdminAuthAndErrorHandling, success, badRequest, conflict } from '@/lib/api-utils';
 import prisma from '@/lib/prisma';
 import { bumpLiveRevisions } from '@/lib/live-updates.server';

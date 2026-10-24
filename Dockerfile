@@ -83,8 +83,8 @@ RUN chown -R nextjs:nodejs .next
 RUN mkdir -p ./public/uploads/avatars
 RUN chown -R nextjs:nodejs ./public/uploads
 
-# Copy Prisma Client (needed for database operations at runtime)
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Prisma 7: Der Client wird nach ./generated erzeugt und von Next.js mitgebaut.
+# Die Laufzeit (@prisma/client, Driver Adapter) kommt aus node_modules/@prisma.
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3000

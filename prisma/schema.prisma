@@ -2,12 +2,13 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
+// Die Verbindungs-URL steht in prisma.config.ts (CLI) bzw. lib/prisma.ts (Laufzeit, Driver Adapter)
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // Persistenter, monotoner Aenderungszaehler fuer leichtgewichtiges Polling.

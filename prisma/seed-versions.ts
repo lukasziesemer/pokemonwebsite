@@ -1,8 +1,6 @@
 /** Seed-Script für Pokémon-Spielversionen (Gen 1-9). */
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { GAME_VERSIONS } from '../lib/game-versions';
-
-const prisma = new PrismaClient();
 
 export const gameVersions = GAME_VERSIONS.map((version) => ({
   key: version.key,

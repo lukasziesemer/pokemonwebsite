@@ -13,7 +13,6 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
-  engine: "classic",
   datasource: {
     url: databaseUrl,
     shadowDatabaseUrl,
