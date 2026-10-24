@@ -3,7 +3,7 @@
  * POST /api/admin/runs/[id]/reopen
  */
 
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import {
   withAdminAuthAndErrorHandling,
   success,
