@@ -80,6 +80,9 @@ services:
     # Verhindert Privilege Escalation
     security_opt:
       - no-new-privileges:true
+    # Keine Linux-Capabilities: die App läuft als nextjs auf Port 3000 und braucht keine
+    cap_drop:
+      - ALL
     # Read-only Root Filesystem (Container kann nicht beschrieben werden)
     read_only: true
     # Temporäre Verzeichnisse die beschreibbar sein müssen

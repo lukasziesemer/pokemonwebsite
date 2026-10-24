@@ -87,15 +87,12 @@ RUN chown -R nextjs:nodejs ./public/uploads
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Use entrypoint to handle permissions and user switching
-ENTRYPOINT ["docker-entrypoint.sh"]
+# Der Container startet direkt als nextjs, ohne root-Entrypoint. Die Upload- und
+# Cache-Volumes gehören nextjs (neue Volumes übernehmen die Rechte aus dem Image).
+USER nextjs
 CMD ["node", "server.js"]
