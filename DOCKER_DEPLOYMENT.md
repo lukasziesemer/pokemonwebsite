@@ -107,7 +107,7 @@ sudo mkdir -p /opt
 cd /opt
 
 # Projekt klonen (ersetze URL mit deinem Repository)
-sudo git clone https://github.com/DEIN-USERNAME/pokemonwebsite.git
+sudo git clone https://github.com/lukasziesemer/pokemonwebsite.git
 cd pokemonwebsite
 
 # Berechtigungen setzen

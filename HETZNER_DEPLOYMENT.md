@@ -176,7 +176,7 @@ ufw status
 cd /opt
 
 # Projekt klonen (ersetze URL mit deinem Repository)
-git clone https://github.com/DEIN-USERNAME/pokemonwebsite.git
+git clone https://github.com/lukasziesemer/pokemonwebsite.git
 
 cd pokemonwebsite
 ```

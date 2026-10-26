@@ -58,7 +58,7 @@ chmod +x /root/hetzner-setup.sh
 
 ```bash
 cd /opt
-git clone https://github.com/DEIN-USERNAME/pokemonwebsite.git
+git clone https://github.com/lukasziesemer/pokemonwebsite.git
 cd pokemonwebsite
 
 # Sichere Passwoerter generieren

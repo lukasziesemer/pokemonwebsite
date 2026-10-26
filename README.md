@@ -5,18 +5,28 @@ Eine vollstaendige Web-Applikation zur Dokumentation eines Parallel-Playthroughs
 ## Features
 
 - **Oeffentliche Ansichten:**
-  - **Pokeroute**: Uebersicht der aktuellen Teams und aller gefangenen Pokemon pro Route und Spieler
-  - **Pokeradar**: Vergleichstool mit Radar Chart fuer Pokemon-Stats (HP, Angriff, Verteidigung, etc.)
-  - **Tabelle**: Tabellarische Uebersicht aller Encounters
+  - **Dashboard** (`/`): Teams aller Spieler, Orden-Fortschritt mit Level-Caps, Defensiv-Abdeckung und Gesamtbilanz des aktuellen Runs
+  - **Pokeroute** (`/pokeroute`): Uebersicht der aktuellen Teams und aller gefangenen Pokemon pro Route und Spieler
+  - **Pokeradar** (`/pokeradar`): Vergleichstool fuer Basiswerte, Profile (Radar Chart) und Typen; Teams als Quelle waehlbar, Vergleichssets werden lokal im Browser gespeichert
+  - **Tabelle** (`/tabelle`): Tabellarische Uebersicht aller Encounters
+  - **Statistik** (`/statistik`): Run-Historie, Run-Vergleich, Trends und Auswertungen ueber alle Runs
+  - **Streams** (`/streams`): Eingebettete YouTube-Streams der Spieler mit Team-Overlay und Run-Status
+  - **Pokemon-Details**: Popouts mit editionsspezifischen Level-up-Attacken und Entwicklungskette (von PokeAPI, in der Datenbank gecacht)
+  - **Live-Updates**: Ansichten aktualisieren sich automatisch (Polling alle 3 Sekunden); Ereignisse wie K.O., Orden oder Run-Ende werden als Overlay eingeblendet
+  - Dark Mode und Umschaltung zwischen statischen und animierten Sprites
 
 - **Admin-Panel:**
-  - Spieler-Verwaltung (CRUD)
-  - Routen-Verwaltung (CRUD)
-  - Encounters-Verwaltung (Dokumentation gefangener Pokemon)
+  - Admin-Uebersicht (`/admin`) mit Schnellzugriffen und Datenhinweisen
+  - Spieler-Verwaltung (CRUD) inkl. Avatar-Upload mit Zuschnitt
+  - Routen- und Encounter-Verwaltung direkt auf `/pokeroute` (als Admin eingeloggt)
+  - Encounter-Links: verbundene Pokemon einer Route gemeinsam aktualisieren, inkl. Entwicklungen
   - Team-Builder (6 Pokemon pro Spieler)
   - K.O. und "Nicht gefangen" Status
-  - Spielstand-System (Speichern/Laden)
-  - PokeAPI-Integration mit lokalem Cache
+  - Run-Verwaltung: Runs mit Spielversion (Gen 1-9) starten, beenden, wieder oeffnen und neu starten; Orden-Zaehler und Pause
+  - Spielstand-System (Speichern/Laden, Download und Import als JSON)
+  - CSV-Import fuer Routen und Encounters (`/admin/import`)
+  - Stream-Verwaltung auf `/streams`
+  - PokeAPI-Integration mit lokalem Cache (inkl. animierter GIF-Sprites)
 
 - **Technische Features:**
   - Session-basierte Authentifizierung mit iron-session
@@ -25,17 +35,20 @@ Eine vollstaendige Web-Applikation zur Dokumentation eines Parallel-Playthroughs
   - TypeScript fuer Type-Safety
   - PostgreSQL-Datenbank mit Prisma ORM
   - Docker-Support fuer einfaches Deployment
+  - Unit-Tests mit Vitest, E2E-Tests mit Playwright
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 (App Router)
+- **Framework**: Next.js 16 (App Router) mit React 19
 - **Sprache**: TypeScript
 - **Styling**: Tailwind CSS 4
 - **Charts**: Recharts
 - **Authentifizierung**: iron-session
-- **Datenbank**: Prisma + PostgreSQL
+- **Datenbank**: Prisma 7 (Driver Adapter `@prisma/adapter-pg`) + PostgreSQL 16
+- **Bildverarbeitung**: sharp, react-easy-crop (Avatare)
 - **API**: PokeAPI (gecacht)
-- **Deployment**: Docker + Docker Compose
+- **Tests**: Vitest, Playwright
+- **Deployment**: Docker + Docker Compose (Node.js 24)
 
 ---
 
@@ -49,7 +62,7 @@ Eine vollstaendige Web-Applikation zur Dokumentation eines Parallel-Playthroughs
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/DEIN-USERNAME/pokemonwebsite.git
+git clone https://github.com/lukasziesemer/pokemonwebsite.git
 cd pokemonwebsite
 
 # 2. Umgebungsvariablen konfigurieren
@@ -63,7 +76,7 @@ docker compose up -d --build
 # http://localhost:3001
 ```
 
-Die Datenbank wird automatisch beim ersten Start initialisiert.
+Bei jedem `docker compose up` legt der `migrate`-Service das Datenbankschema per `npx prisma db push` an bzw. aktualisiert es, bevor die App startet.
 
 ---
 
@@ -71,14 +84,14 @@ Die Datenbank wird automatisch beim ersten Start initialisiert.
 
 ### Voraussetzungen
 
-- Node.js 20+ installiert
+- Node.js 24+ installiert (siehe `.nvmrc`)
 - PostgreSQL Datenbank
 
 ### Setup-Schritte
 
 1. **Repository klonen:**
    ```bash
-   git clone https://github.com/DEIN-USERNAME/pokemonwebsite.git
+   git clone https://github.com/lukasziesemer/pokemonwebsite.git
    cd pokemonwebsite
    ```
 
@@ -102,6 +115,7 @@ Die Datenbank wird automatisch beim ersten Start initialisiert.
    npx prisma generate
    npx prisma db push
    ```
+   Der Prisma Client wird nach `generated/prisma` erzeugt (nicht eingecheckt). Seit Prisma 7 erzeugt `db push` den Client nicht mehr selbst, daher ist `prisma generate` separat noetig.
 
 5. **Development Server starten:**
    ```bash
@@ -110,8 +124,9 @@ Die Datenbank wird automatisch beim ersten Start initialisiert.
 
 6. **Im Browser oeffnen:**
    ```
-   http://localhost:3001
+   http://localhost:3000
    ```
+   (Port 3001 gilt nur fuer das Docker-Setup.)
 
 ---
 
@@ -131,21 +146,27 @@ Die Datenbank wird automatisch beim ersten Start initialisiert.
 ### 3. Spieler erstellen
 
 1. Gehe zu `/admin/players`
-2. Fuege Spieler mit Namen und Farbe hinzu
+2. Fuege Spieler mit Namen und Farbe hinzu (optional mit Avatar)
 
-### 4. Routen erstellen
+### 4. Run starten
 
-1. Gehe zu `/admin/routes`
+1. Gehe zu `/admin/gamesaves`
+2. Starte einen neuen Run und waehle die Spielversion
+
+### 5. Routen erstellen
+
+1. Gehe (als Admin eingeloggt) zu `/pokeroute`
 2. Erstelle Routen in der Spielreihenfolge
+3. Alternativ: Routen und Encounters gesammelt per CSV unter `/admin/import` anlegen
 
-### 5. Encounters dokumentieren
+### 6. Encounters dokumentieren
 
-1. Gehe zu `/admin/encounters`
-2. Waehle Spieler, Route und gefangenes Pokemon
+1. Gehe zu `/pokeroute`
+2. Waehle pro Route und Spieler das gefangene Pokemon
 
-### 6. Teams zusammenstellen
+### 7. Teams zusammenstellen
 
-1. Gehe zu `/admin/team`
+1. Gehe zu `/pokeroute`
 2. Weise Pokemon den Team-Slots zu
 
 ---
@@ -157,23 +178,39 @@ pokemonwebsite/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API Routes
 │   │   ├── auth/         # Login/Logout/Status
-│   │   ├── admin/        # Admin-CRUD-Endpunkte
-│   │   ├── pokemon/      # Public: Pokemon-Liste
+│   │   ├── admin/        # Admin-Endpunkte (geschuetzt)
+│   │   ├── events/       # Public: Live-Updates (Polling)
+│   │   ├── pokemon/      # Public: Pokemon-Liste, Details, Entwicklungen
 │   │   ├── players/      # Public: Spieler & Teams
-│   │   └── routes/       # Public: Routen & Encounters
-│   ├── admin/            # Admin-Seiten (geschuetzt)
+│   │   ├── pokeradar/    # Public: Teams fuer den Vergleich
+│   │   ├── routes/       # Public: Routen & Encounters
+│   │   ├── runs/         # Public: Run-Statistiken, Historie, Vergleich
+│   │   ├── streams/      # Public: Streams
+│   │   └── uploads/      # Auslieferung hochgeladener Avatare
+│   ├── admin/            # Admin-Seiten (geschuetzt): Uebersicht, Spieler,
+│   │                     # Pokemon-Cache, Spielstaende, CSV-Import
 │   ├── pokeradar/        # Vergleichstool
 │   ├── pokeroute/        # Routen-Dokumentation
+│   ├── statistik/        # Run-Statistiken
+│   ├── streams/          # Stream-Ansicht
 │   ├── tabelle/          # Tabellenansicht
-│   └── login/            # Login-Seite
+│   ├── login/            # Login-Seite
+│   └── page.tsx          # Dashboard
 ├── components/            # React-Komponenten
 ├── lib/                   # Utility-Funktionen
 ├── prisma/
-│   └── schema.prisma     # Datenbankschema
+│   ├── schema.prisma     # Datenbankschema
+│   ├── migrations/       # SQL-Migrationen
+│   └── seed-versions.ts  # Seed fuer Spielversionen
+├── generated/prisma/      # Generierter Prisma Client (nicht eingecheckt)
+├── tests/                 # Unit-Tests (Vitest)
+├── e2e/                   # E2E-Tests (Playwright)
+├── scripts/               # Hilfsskripte (z.B. Orden-Bilder herunterladen)
 ├── deployment/           # Deployment-Dateien & Configs
 ├── Dockerfile            # Docker Build
 ├── docker-compose.yml    # Docker Orchestrierung
-└── middleware.ts         # Route Protection
+├── prisma.config.ts      # Prisma-CLI-Konfiguration
+└── proxy.ts              # Login-Rate-Limiting & Security Headers
 ```
 
 ---
@@ -183,8 +220,9 @@ pokemonwebsite/
 Diese Anwendung ist mit mehreren Sicherheitsmassnahmen ausgestattet:
 
 ### Docker-Sicherheit
-- **Non-root Container**: App laeuft als User `nextjs`, nicht als root
-- **Read-only Filesystem**: Container kann nicht beschrieben werden
+- **Non-root Container**: App laeuft als User `nextjs` (UID/GID 10001), nicht als root
+- **Keine Capabilities**: `cap_drop: ALL` und `no-new-privileges`
+- **Read-only Filesystem**: Container kann nicht beschrieben werden (ausser `/tmp` und den Volumes fuer Avatare und Image-Cache)
 - **Memory Limits**: Max. 512MB RAM verhindert DoS-Angriffe
 - **Datenbank isoliert**: PostgreSQL nur intern erreichbar (kein Port nach aussen)
 - **App nur lokal gebunden**: Port 3001 nur auf 127.0.0.1
@@ -196,8 +234,11 @@ Diese Anwendung ist mit mehreren Sicherheitsmassnahmen ausgestattet:
 - **SSL-Hardening**: TLS 1.2+ mit sicheren Ciphers
 
 ### Anwendungs-Sicherheit
-- **Session-Cookies**: httpOnly, secure, sameSite=lax
+- **Session-Cookies**: httpOnly, sameSite=strict, secure (in Production), 7 Tage gueltig
 - **Passwort-Validierung**: SESSION_SECRET muss mind. 32 Zeichen lang sein
+- **Admin-Login**: Timing-sicherer Vergleich; ohne gesetzte `ADMIN_USERNAME`/`ADMIN_PASSWORD` ist kein Login moeglich
+- **Login-Rate-Limiting in der App** (`proxy.ts`): Max. 5 Versuche pro 15 Minuten pro IP (In-Memory)
+- **Security Headers in der App** (`proxy.ts`): Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - **Image Optimization**: Nur erlaubte Domains (verhindert DoS)
 
 ### Wichtige Hinweise
@@ -279,6 +320,23 @@ npm run dev
 # Build
 npm run build
 
+# Production-Server (nach Build)
+npm run start
+
+# Linting
+npm run lint
+
+# Unit-Tests (Vitest, fuehrt vorher prisma generate aus)
+npm run test
+
+# E2E-Tests (Playwright, erwartet laufende App unter E2E_BASE_URL,
+# Standard: http://127.0.0.1:3001; Admin-Login ueber ADMIN_USERNAME/ADMIN_PASSWORD)
+npm run test:e2e
+npm run test:e2e:headed
+
+# Unit- und E2E-Tests
+npm run test:all
+
 # Prisma Studio (DB-GUI)
 npx prisma studio
 
@@ -294,6 +352,13 @@ npx prisma db push
 - `GET /api/pokemon` - Alle gecachten Pokemon
 - `GET /api/players` - Alle Spieler mit Teams
 - `GET /api/routes` - Alle Routen mit Encounters
+- `GET /api/pokemon/[pokedexId]/details?gameVersion=...` - Editionsspezifische Details (Attacken, Entwicklungskette)
+- `GET /api/pokemon/[pokedexId]/evolutions` - Vor- und Nachentwicklungen
+- `GET /api/pokeradar/teams` - Teams fuer den Vergleich
+- `GET /api/streams` - Alle Streams mit Teams und Run-Daten
+- `GET /api/events/latest?since=...` - Live-Events und Aenderungsstaende (Polling)
+- `GET /api/runs/stats`, `/api/runs/overview`, `/api/runs/history`, `/api/runs/history/[id]`, `/api/runs/compare`, `/api/runs/analytics` - Run-Statistiken
+- `GET /api/uploads/avatars/[filename]` - Hochgeladene Avatare (auch ueber `/uploads/avatars/...` erreichbar)
 
 ### Auth APIs
 - `POST /api/auth/login` - Admin-Login
@@ -302,11 +367,16 @@ npx prisma db push
 
 ### Admin APIs (geschuetzt)
 - **Players**: `/api/admin/players`
-- **Routes**: `/api/admin/routes`
-- **Encounters**: `/api/admin/encounters`
-- **Team**: `/api/admin/team`
-- **Pokemon**: `/api/admin/pokemon/sync`, `/api/admin/pokemon/add`
-- **Gamesaves**: `/api/admin/gamesaves`
+- **Avatare**: `/api/admin/avatars/upload`, `/api/admin/avatars/[filename]`
+- **Routes**: `/api/admin/routes` (inkl. `/[id]/knockout`, `/[id]/notcaught`, `/[id]/set-team-slot`)
+- **Encounters**: `/api/admin/encounters` (inkl. `/[id]/evolve`)
+- **Encounter-Links**: `/api/admin/encounter-links/[routeId]`, `/api/admin/encounter-links/audit`
+- **Pokemon**: `/api/admin/pokemon/sync`, `/api/admin/pokemon/sync/progress`, `/api/admin/pokemon/sync-gifs`, `/api/admin/pokemon/add`, `/api/admin/pokemon/options`
+- **Gamesaves**: `/api/admin/gamesaves` (inkl. `/[id]/download`, `/import`, `/load`, `/newgame`, `/reset`)
+- **Runs**: `/api/admin/runs` (inkl. `/[id]/end`, `/[id]/reopen`, `/next`, `/restart`), `/api/runs/badges`, `/api/runs/pause`
+- **Spielversionen**: `/api/admin/game-versions`
+- **Streams**: `/api/admin/streams`
+- **CSV-Import**: `/api/admin/import/csv`
 
 ---
 
@@ -340,7 +410,7 @@ openssl rand -base64 32
 
 ### Rate Limiting sperrt mich aus (HTTP 429)
 
-Warte 1 Minute oder erhoehe temporaer das Limit in der Nginx-Config.
+Es gibt zwei Limits: Nginx (5 Login-Versuche pro Minute) und die App selbst (`proxy.ts`, 5 Versuche pro 15 Minuten pro IP). Warte bis zu 15 Minuten, starte den App-Container neu (der Zaehler liegt nur im Speicher) oder erhoehe temporaer das Limit in der Nginx-Config.
 
 ---
 
