@@ -11,6 +11,7 @@ import Link from 'next/link';
 import PokemonCard from './PokemonCard';
 import EncounterActionMenu from './admin/EncounterActionMenu';
 import RouteLinkActionMenu from './admin/RouteLinkActionMenu';
+import PokemonCombobox from './admin/PokemonCombobox';
 import {
   getEncounterRouteLinkState,
   getNextTeamSlot,
@@ -19,7 +20,7 @@ import {
 } from './admin/route-link-ui';
 import { PokemonDetailsTrigger } from './pokemon-details';
 import PlayerAvatar from './PlayerAvatar';
-import { calculateAverageStats, filterPokemonBySearch } from '@/lib/team-utils';
+import { calculateAverageStats } from '@/lib/team-utils';
 import { fetchJson } from '@/lib/fetchJson';
 import { mutateEncounterLink } from '@/lib/encounter-link-admin';
 import { getErrorMessage } from '@/lib/component-utils';
@@ -87,8 +88,6 @@ interface RouteListProps {
   gameVersionKey?: string | null;
   onTeamUpdate?: () => void;
   pokemon?: PokemonListItem[];
-  /** Neu angelegte Route: wird angesteuert, damit die Erfassung direkt weitergeht. */
-  focusRouteId?: number | null;
 }
 
 // =============================================================================
@@ -279,57 +278,6 @@ function StatusInfoBox({ type, info }: StatusInfoBoxProps) {
   );
 }
 
-interface PokemonSearchInputProps {
-  searchValue: string;
-  onSearchChange: (value: string) => void;
-  filteredPokemon: PokemonListItem[];
-  onSelect: (pokemonId: number) => void;
-  isAdding: boolean;
-}
-
-function PokemonSearchInput({
-  searchValue,
-  onSearchChange,
-  filteredPokemon,
-  onSelect,
-  isAdding,
-}: PokemonSearchInputProps) {
-  return (
-    <div className="relative min-w-[160px]">
-      <input
-        type="text"
-        placeholder="Pokemon suchen..."
-        value={searchValue}
-        onChange={(e) => onSearchChange(e.target.value)}
-        disabled={isAdding}
-        className="min-h-11 w-full border border-[var(--border-default)] bg-[var(--card-bg)] px-3 py-2 text-sm text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-blue)]"
-      />
-
-      {searchValue && filteredPokemon.length > 0 && (
-        <div className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto border border-[var(--border-default)] bg-[var(--card-bg-elevated)] shadow-lg">
-          {filteredPokemon.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => onSelect(p.id)}
-              disabled={isAdding}
-              className="w-full px-3 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[var(--background-secondary)] transition flex items-center gap-2 disabled:opacity-50"
-            >
-              <span className="text-[var(--text-secondary)]">#{p.pokedexId}</span>
-              <span className="font-medium">{p.nameGerman || p.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {searchValue && filteredPokemon.length === 0 && (
-        <div className="absolute z-50 mt-1 w-full border border-[var(--border-default)] bg-[var(--card-bg-elevated)] p-3 shadow-lg">
-          <p className="text-sm text-[var(--text-secondary)]">Kein Pokemon gefunden</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // =============================================================================
 // Haupt-Komponente
 // =============================================================================
@@ -341,7 +289,6 @@ const RouteList = memo(function RouteList({
   gameVersionKey = null,
   onTeamUpdate,
   pokemon = [],
-  focusRouteId = null,
 }: RouteListProps) {
   // State
   const [processing, setProcessing] = useState(false);
@@ -353,32 +300,36 @@ const RouteList = memo(function RouteList({
   const [editingRouteName, setEditingRouteName] = useState('');
   const occupiedTeamSlots = useMemo(() => getOccupiedTeamSlots(routes), [routes]);
 
-  useEffect(() => {
-    if (focusRouteId === null) return;
-    const row = document.getElementById(`route-${focusRouteId}`);
-    row?.scrollIntoView({ block: 'center', behavior: 'instant' });
-    row?.querySelector('input')?.focus({ preventScroll: true });
-  }, [focusRouteId]);
-
   // ==========================================================================
   // Handler
   // ==========================================================================
 
+  // Nach dem Reload weiter beim nächsten Spieler; ist die Route komplett, beim Teambutton.
+  const focusNextCapture = (routeId: number) => {
+    window.setTimeout(() => {
+      const row = document.getElementById(`route-${routeId}`);
+      const next = row?.querySelector<HTMLElement>('[role="combobox"]')
+        ?? row?.querySelector<HTMLElement>('[data-team-action]');
+      next?.focus();
+    }, 0);
+  };
+
   const handleAddPokemon = async (routeId: number, playerId: number, pokemonId: number) => {
     const key = `${routeId}-${playerId}`;
-    setAddingPokemon({ ...addingPokemon, [key]: true });
+    setAddingPokemon((current) => ({ ...current, [key]: true }));
     try {
       await fetchJson('/api/admin/encounters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ routeId, playerId, pokemonId }),
       });
-      setAddPokemonSearch({ ...addPokemonSearch, [key]: '' });
+      setAddPokemonSearch((current) => ({ ...current, [key]: '' }));
       await onTeamUpdate?.(); // Warte auf Daten-Reload
+      focusNextCapture(routeId);
     } catch (error) {
       alert(`Fehler beim Hinzufuegen: ${getErrorMessage(error)}`);
     } finally {
-      setAddingPokemon({ ...addingPokemon, [key]: false });
+      setAddingPokemon((current) => ({ ...current, [key]: false }));
     }
   };
 
@@ -555,6 +506,7 @@ const RouteList = memo(function RouteList({
                     {isAdmin && canJoinTeam ? (
                       <button
                         type="button"
+                        data-team-action
                         disabled={processing || nextTeamSlot === null}
                         onClick={() => {
                           if (nextTeamSlot !== null) void handleAddToTeam(route.id, nextTeamSlot);
@@ -609,7 +561,6 @@ const RouteList = memo(function RouteList({
                   const hasEncounter = playerEncounters.length > 0;
                   const key = `${route.id}-${player.id}`;
                   const searchValue = addPokemonSearch[key] || '';
-                  const filteredPokemon = filterPokemonBySearch(pokemon, searchValue);
                   const isAdding = addingPokemon[key] || false;
 
                   return (
@@ -667,12 +618,13 @@ const RouteList = memo(function RouteList({
                           ))}
                         </div>
                       ) : isAdmin ? (
-                        <PokemonSearchInput
-                          searchValue={searchValue}
-                          onSearchChange={(v) => setAddPokemonSearch({ ...addPokemonSearch, [key]: v })}
-                          filteredPokemon={filteredPokemon}
-                          onSelect={(pokemonId) => handleAddPokemon(route.id, player.id, pokemonId)}
-                          isAdding={isAdding}
+                        <PokemonCombobox
+                          label={`Pokémon für ${player.name} auf ${route.name}`}
+                          value={searchValue}
+                          onChange={(v) => setAddPokemonSearch((current) => ({ ...current, [key]: v }))}
+                          options={pokemon}
+                          onSelect={(selected) => handleAddPokemon(route.id, player.id, selected.id)}
+                          disabled={isAdding}
                         />
                       ) : (
                         <p className="text-[var(--text-tertiary)] text-sm italic min-w-[160px]">Noch kein Pokemon</p>

@@ -118,6 +118,19 @@ export function getOccupiedTeamSlots(
   return occupied;
 }
 
+/** Routen, auf denen noch ein Spieler fehlt, in Spielreihenfolge. Inaktive Routen bleiben außen vor. */
+export function getOpenCaptureRoutes<
+  T extends {
+    encounters: { player: { id: number }; isKnockedOut: boolean; isNotCaught: boolean }[];
+  },
+>(routes: T[], playerIds: number[]): T[] {
+  return routes.filter(({ encounters }) => {
+    const isInactive = encounters.some(({ isKnockedOut, isNotCaught }) => isKnockedOut || isNotCaught);
+    const captured = new Set(encounters.map(({ player }) => player.id));
+    return !isInactive && playerIds.some((playerId) => !captured.has(playerId));
+  });
+}
+
 export function getFirstFreeTeamSlot(occupied: OccupiedTeamSlots): number | null {
   return TEAM_SLOTS.find((slot) => !occupied[slot]) ?? null;
 }

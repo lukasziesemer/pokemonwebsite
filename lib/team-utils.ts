@@ -161,22 +161,32 @@ export function createTeamSlots<T extends { teamSlot: number | null }>(
 }
 
 /**
- * Filtert Pokémon nach Suchbegriff
+ * Filtert Pokémon nach Suchbegriff. Exakte Treffer und Namensanfänge stehen
+ * vorn, weil Enter in der Erfassung den ersten Treffer übernimmt.
  */
 export function filterPokemonBySearch<T extends { name: string; nameGerman: string | null; pokedexId: number }>(
   pokemon: T[],
   search: string,
   limit: number = 8
 ): T[] {
-  if (!search.trim()) return [];
-  
-  const searchLower = search.toLowerCase();
+  const query = search.trim().toLowerCase();
+  if (!query) return [];
+
+  const rank = (p: T) => {
+    const names = [p.name.toLowerCase(), p.nameGerman?.toLowerCase() ?? ''];
+    const pokedexId = p.pokedexId.toString();
+    if (names.includes(query) || pokedexId === query) return 0;
+    if (names.some((name) => name.startsWith(query))) return 1;
+    if (names.some((name) => name.includes(query)) || pokedexId.includes(query)) return 2;
+    return null;
+  };
+
   return pokemon
-    .filter(
-      (p) =>
-        p.name.toLowerCase().includes(searchLower) ||
-        p.nameGerman?.toLowerCase().includes(searchLower) ||
-        p.pokedexId.toString().includes(search)
-    )
-    .slice(0, limit);
+    .flatMap((p) => {
+      const position = rank(p);
+      return position === null ? [] : [{ p, position }];
+    })
+    .sort((left, right) => left.position - right.position)
+    .slice(0, limit)
+    .map(({ p }) => p);
 }
