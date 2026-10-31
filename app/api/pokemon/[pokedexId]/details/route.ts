@@ -12,7 +12,8 @@ export async function GET(
     return NextResponse.json({ error: 'Ungültige Pokédex-ID' }, { status: 400 });
   }
 
-  const gameVersionKey = request.nextUrl.searchParams.get('gameVersion')?.trim() || null;
+  const requestedEdition = request.nextUrl.searchParams.get('gameVersion')?.trim().toLowerCase();
+  const gameVersionKey = requestedEdition === 'none' ? null : requestedEdition || undefined;
   if (gameVersionKey && !getKnownGameVersion(gameVersionKey)) {
     return NextResponse.json({ error: 'Unbekannte Spielversion' }, { status: 400 });
   }

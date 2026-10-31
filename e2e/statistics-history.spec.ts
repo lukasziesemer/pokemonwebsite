@@ -8,7 +8,7 @@ test.describe('Statistikfilter und Run-Historie', () => {
     const { historyRequests } = await installStatisticsMocks(page);
     await page.goto('/statistik');
 
-    await expect(page.getByRole('heading', { name: 'Run-Statistiken' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Statistik', exact: true })).toBeVisible();
     const filter = page.getByRole('group', { name: 'Statistik nach Spiel filtern' });
     const blueFilter = filter.getByRole('button', { name: 'Pokémon Blau' });
     await blueFilter.click();

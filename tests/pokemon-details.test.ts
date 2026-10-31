@@ -55,6 +55,7 @@ const pokemonResponse = {
 };
 
 const speciesResponse = {
+  generation: { name: 'generation-i', url: 'https://pokeapi.co/api/v2/generation/1/' },
   names: [
     { name: 'Pikachu', language: { name: 'de', url: '' } },
     { name: 'Pikachu', language: { name: 'en', url: '' } },
@@ -134,6 +135,31 @@ describe('edition-specific level-up moves', () => {
     expect(result.cache.status).toBe('miss');
     expect(mocks.cacheUpsert).toHaveBeenCalledTimes(1);
   });
+
+  it('fetches historical boundaries and caches Charm as Normal for Black 2', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/pokemon-species/25')) return new Response(JSON.stringify(speciesResponse));
+      if (url.includes('/pokemon/25')) return new Response(JSON.stringify({
+        ...pokemonResponse,
+        moves: [{ ...pokemonResponse.moves[0], move: { name: 'charm', url: 'https://pokeapi.co/api/v2/move/204/' } }],
+      }));
+      if (url.includes('/move/204')) return new Response(JSON.stringify({
+        ...moveResponse,
+        name: 'charm', names: [{ name: 'Charme', language: { name: 'de', url: '' } }],
+        type: { name: 'fairy', url: '' }, damage_class: { name: 'status', url: '' }, power: null,
+        past_values: [{ type: { name: 'normal', url: '' }, power: null, accuracy: null, pp: null, version_group: { name: 'x-y', url: '' } }],
+      }));
+      if (url.includes('/version-group/x-y')) return new Response(JSON.stringify({ order: 17 }));
+      if (url.includes('/version-group/black-2-white-2')) return new Response(JSON.stringify({ order: 16 }));
+      throw new Error(`Unexpected URL ${url}`);
+    }));
+    const result = await getPokemonDetails(25, { gameVersionKey: 'black2' });
+    expect(result.levelUpMoves?.[0]).toMatchObject({ displayName: 'Charme', type: 'normal', damageClass: 'status' });
+    expect(mocks.cacheUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ schemaVersion: 3 }),
+    }));
+  });
 });
 
 describe('persistent detail cache', () => {
@@ -156,7 +182,7 @@ describe('persistent detail cache', () => {
   it('returns a fresh cache hit without PokeAPI calls', async () => {
     mocks.cacheFindUnique.mockResolvedValue({
       payload: JSON.stringify(cachedPayload),
-      schemaVersion: 1,
+      schemaVersion: 3,
       fetchedAt: new Date('2026-08-20T00:00:00Z'),
       expiresAt: new Date('2026-09-20T00:00:00Z'),
     });
@@ -171,10 +197,45 @@ describe('persistent detail cache', () => {
     expect(mocks.cacheUpsert).not.toHaveBeenCalled();
   });
 
+  it('keeps the requested edition label when sibling editions share the cache', async () => {
+    mocks.cacheFindUnique.mockResolvedValue({
+      payload: JSON.stringify(cachedPayload),
+      schemaVersion: 3,
+      fetchedAt: new Date('2026-08-20T00:00:00Z'),
+      expiresAt: new Date('2026-09-20T00:00:00Z'),
+    });
+    const result = await getPokemonDetails(25, {
+      gameVersionKey: 'white2',
+      now: new Date('2026-08-30T00:00:00Z'),
+    });
+    expect(result.edition?.key).toBe('white2');
+    expect(result.edition?.name).toBe('Pokémon Weiß 2');
+    expect(result.cache.status).toBe('hit');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('refreshes old-schema data before exposing modern move values for an older edition', async () => {
+    mocks.cacheFindUnique.mockResolvedValue({
+      payload: JSON.stringify(cachedPayload),
+      schemaVersion: 2,
+      fetchedAt: new Date('2026-08-20T00:00:00Z'),
+      expiresAt: new Date('2026-09-20T00:00:00Z'),
+    });
+    const result = await getPokemonDetails(25, {
+      gameVersionKey: 'black2',
+      now: new Date('2026-08-30T00:00:00Z'),
+    });
+    expect(result.cache.status).toBe('miss');
+    expect(result.evolution.editionScope?.generation).toBe(5);
+    expect(mocks.cacheUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ schemaVersion: 3 }),
+    }));
+  });
+
   it('falls back to stale persisted data when PokeAPI is unavailable', async () => {
     mocks.cacheFindUnique.mockResolvedValue({
       payload: JSON.stringify(cachedPayload),
-      schemaVersion: 1,
+      schemaVersion: 3,
       fetchedAt: new Date('2026-06-01T00:00:00Z'),
       expiresAt: new Date('2026-07-01T00:00:00Z'),
     });
@@ -215,5 +276,32 @@ describe('evolution conditions', () => {
 
     expect(result.label).toBe('Level 30 · Freundschaft 220+ · nachts');
     expect(result).toMatchObject({ minLevel: 30, minHappiness: 220, timeOfDay: 'night' });
+  });
+
+  it('reads form restrictions from the PokeAPI form fields', () => {
+    const result = formatEvolutionCondition({
+      trigger: { name: 'level-up', url: '' },
+      required_pokemon_form: { name: 'zigzagoon-galar', url: 'https://pokeapi.co/api/v2/pokemon-form/10333/' },
+      evolved_pokemon_form: { name: 'linoone-galar', url: 'https://pokeapi.co/api/v2/pokemon-form/10334/' },
+      item: null,
+      held_item: null,
+      known_move: null,
+      known_move_type: null,
+      location: null,
+      min_level: 20,
+      min_happiness: null,
+      min_beauty: null,
+      min_affection: null,
+      time_of_day: '',
+      gender: null,
+      relative_physical_stats: null,
+      needs_overworld_rain: false,
+      turn_upside_down: false,
+      party_species: null,
+      party_type: null,
+      trade_species: null,
+    });
+
+    expect(result).toMatchObject({ basePokedexId: 10333, evolvedPokedexId: 10334 });
   });
 });

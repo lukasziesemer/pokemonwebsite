@@ -526,7 +526,7 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
       <p className="mb-2 text-xs text-[var(--text-secondary)] sm:hidden">
         Die Tabelle kann horizontal gescrollt werden.
       </p>
-      <div className="-mx-4 overflow-x-auto border-y border-[var(--border-default)] sm:mx-0">
+      <div className="-mx-3 overflow-x-auto border-y border-[var(--border-default)] sm:mx-0">
         <table className="app-data-table min-w-[64rem] w-full text-left">
           <caption className="sr-only">
             Encounters nach Route und Spieler mit Team- und Encounter-Status
