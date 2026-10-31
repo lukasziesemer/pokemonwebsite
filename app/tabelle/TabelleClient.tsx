@@ -25,7 +25,9 @@ import { fetchJson } from '@/lib/fetchJson';
 import { useLiveRefresh } from '@/lib/hooks/useLiveRefresh';
 import type { LiveUpdateTopic } from '@/lib/live-updates';
 import type { PokemonListItem } from '@/lib/types';
+import { getOccupiedTeamSlots } from '@/components/admin/route-link-ui';
 import {
+  compareRoutesByOrder,
   rowMatchesTableFilters,
   type EncounterStatusFilter,
   type TeamFilter,
@@ -300,7 +302,7 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
 
     return [...filtered].sort((left, right) => {
       if (sort.key === 'route') {
-        return left.name.localeCompare(right.name, 'de-DE') * multiplier;
+        return compareRoutesByOrder(left, right) * multiplier;
       }
       if (sort.key === 'average') {
         return (
@@ -329,6 +331,15 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
       return (leftValue - rightValue) * multiplier;
     });
   }, [sort, statusFilter, tableRows, teamFilter]);
+
+  const occupiedTeamSlots = useMemo(
+    () => getOccupiedTeamSlots(tableRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      encounters: row.players.flatMap((cell) => (cell ? [cell.encounter] : [])),
+    }))),
+    [tableRows],
+  );
 
   const hasFilters = teamFilter !== 'all' || statusFilter !== 'all';
 
@@ -425,6 +436,7 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
             <EncounterActionMenu
               encounter={encounter}
               pokemonOptions={pokemonOptions ?? []}
+              pokemonOptionsLoading={pokemonOptionsLoading}
               gameVersionKey={currentGameVersion?.key ?? null}
               onUpdated={handleUpdated}
               onError={setActionMessage}
@@ -621,11 +633,12 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
                               cell ? [cell.encounter] : [],
                             ),
                             expectedPlayerCount: players.length,
+                            occupiedTeamSlots,
                           }}
                           onUpdated={handleRouteUpdated}
                           onDeleted={handleRouteDeleted}
                           onError={setActionMessage}
-                          triggerLabel="Link"
+                          triggerLabel="Route"
                           disabled={isRefreshing}
                         />
                       ) : null}

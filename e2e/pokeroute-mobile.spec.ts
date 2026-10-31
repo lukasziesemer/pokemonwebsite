@@ -71,7 +71,7 @@ for (const width of [390, 360]) {
 
         const trigger = page
           .locator('.route-list-row')
-          .getByRole('button', { name: /^(?!Link ).+ verwalten$/ })
+          .getByRole('button', { name: /^(?!Route ).+ verwalten$/ })
           .first();
         test.skip((await trigger.count()) === 0, 'Der aktuelle Spielstand enthält keine Encounter.');
 

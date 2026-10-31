@@ -11,6 +11,8 @@ interface EncounterAdminDialogProps {
   children: ReactNode;
   actions: ReactNode;
   busy?: boolean;
+  /** Macht den Dialog zum Formular: Enter bestätigt, der Bestätigen-Button ist type="submit". */
+  onSubmit?: () => void;
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -31,6 +33,7 @@ export default function EncounterAdminDialog({
   children,
   actions,
   busy = false,
+  onSubmit,
 }: EncounterAdminDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -51,7 +54,11 @@ export default function EncounterAdminDialog({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const focusTimer = window.setTimeout(() => {
-      dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+      const dialog = dialogRef.current;
+      (
+        dialog?.querySelector<HTMLElement>('[data-autofocus]')
+        ?? dialog?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+      )?.focus();
     }, 0);
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -91,6 +98,13 @@ export default function EncounterAdminDialog({
   }, [isOpen]);
 
   if (!isOpen || typeof document === 'undefined') return null;
+
+  const body = (
+    <>
+      <div className="space-y-4 px-5 pt-5 sm:px-6">{children}</div>
+      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-[var(--border-default)] px-5 py-4 sm:px-6">{actions}</div>
+    </>
+  );
 
   return createPortal(
     <div
@@ -141,8 +155,16 @@ export default function EncounterAdminDialog({
           </button>
         </div>
 
-        <div className="space-y-4 px-5 pt-5 sm:px-6">{children}</div>
-        <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-[var(--border-default)] px-5 py-4 sm:px-6">{actions}</div>
+        {onSubmit ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit();
+            }}
+          >
+            {body}
+          </form>
+        ) : body}
       </div>
     </div>,
     document.body,

@@ -17,7 +17,7 @@ import EncounterActionMenu, {
 import RouteLinkActionMenu, {
   type RouteLinkActionMenuTarget,
 } from './admin/RouteLinkActionMenu';
-import { getEncounterRouteLinkState } from './admin/route-link-ui';
+import { getOccupiedTeamSlots, getTeamSlotRouteOptions } from './admin/route-link-ui';
 import { useSpriteMode } from '@/lib/contexts/SpriteContext';
 import { calculateAverageStats, countPlayerStats, createTeamSlots } from '@/lib/team-utils';
 import { parseTypes } from '@/lib/typeEffectiveness';
@@ -167,6 +167,8 @@ interface TeamDisplayProps {
   playerColor: string;
   teamMembers: TeamEncounter[];
   routes: Route[];
+  /** Anzahl aller Spieler, auch wenn noch nicht jeder einen Encounter hat. */
+  expectedPlayerCount: number;
   isAdmin?: boolean;
   gameVersionKey?: string | null;
   onUpdated?: () => void | Promise<void>;
@@ -179,6 +181,7 @@ export default function TeamDisplay({
   playerColor,
   teamMembers,
   routes,
+  expectedPlayerCount,
   isAdmin = false,
   gameVersionKey = null,
   onUpdated,
@@ -196,23 +199,18 @@ export default function TeamDisplay({
   const teamAverage = calculateAverageStats(filledMembers);
   const { koCount, notCaughtCount, knockedOutPokemon, notCaughtPokemon } = countPlayerStats(playerName, routes);
   const teamComparisonHref = buildTeamComparisonHref(playerName, filledMembers);
-  const expectedPlayerCount = useMemo(
-    () => new Set([
-      playerId,
-      ...routes.flatMap((route) => route.encounters.map((encounter) => encounter.player.id)),
-    ]).size,
-    [playerId, routes],
-  );
+  const occupiedTeamSlots = useMemo(() => getOccupiedTeamSlots(routes), [routes]);
   const routeLinks = useMemo<RouteLinkActionMenuTarget[]>(() => routes
     .filter((route) => route.encounters.length > 0)
     .map((route) => ({
       route: { id: route.id, name: route.name },
       expectedPlayerCount,
+      occupiedTeamSlots,
       encounters: route.encounters.map((encounter): EncounterActionMenuTarget => ({
         ...encounter,
         route: { id: route.id, name: route.name },
       })),
-    })), [expectedPlayerCount, routes]);
+    })), [expectedPlayerCount, occupiedTeamSlots, routes]);
   const encounterTargets = useMemo(
     () => routeLinks.flatMap((link) => link.encounters),
     [routeLinks],
@@ -230,25 +228,10 @@ export default function TeamDisplay({
     }
     return linksByEncounterId;
   }, [routeLinks]);
-  const routeLinkOptions = useMemo(() => routeLinks
-    .map((link) => {
-      const state = getEncounterRouteLinkState(link);
-      const playerEncounter = link.encounters.find(
-        (encounter) => encounter.player.id === playerId,
-      );
-      const isAlreadyInTeam = playerEncounter?.teamSlot !== null && playerEncounter !== undefined;
-      const canAssign = Boolean(playerEncounter) && state.canAssignToTeam;
-      const disabledReason = !playerEncounter
-        ? `${playerName} fehlt in diesem Link`
-        : !state.isComplete
-          ? `Unvollständig (${state.memberCount}/${state.expectedPlayerCount})`
-          : !state.allActive
-            ? 'Link muss zuerst reaktiviert werden'
-            : null;
-
-      return { link, state, canAssign, disabledReason, isAlreadyInTeam };
-    })
-    .filter((option) => !option.isAlreadyInTeam), [playerId, playerName, routeLinks]);
+  const routeLinkOptions = useMemo(
+    () => getTeamSlotRouteOptions(routeLinks, playerId, playerName),
+    [playerId, playerName, routeLinks],
+  );
 
   const closeSlotPicker = () => {
     setOpenEmptySlot(null);
@@ -376,7 +359,7 @@ export default function TeamDisplay({
                       {isAdmin && routeLinksByEncounterId.has(member.id) ? (
                         <RouteLinkActionMenu
                           link={routeLinksByEncounterId.get(member.id)!}
-                          triggerLabel="Link verwalten"
+                          triggerLabel="Route verwalten"
                           className="mt-1 w-full [&>button]:w-full [&>button]:justify-center"
                           onUpdated={() => { void onUpdated?.(); }}
                           onDeleted={() => { void onUpdated?.(); }}
@@ -389,7 +372,7 @@ export default function TeamDisplay({
                 openEmptySlot === index + 1 ? (
                   <div className="flex min-h-28 flex-col justify-center gap-2 pt-3">
                     <label htmlFor={`team-slot-${playerId}-${index + 1}`} className="text-[10px] font-bold uppercase tracking-wide">
-                      Link für Platz {index + 1}
+                      Route für Platz {index + 1}
                     </label>
                     <select
                       id={`team-slot-${playerId}-${index + 1}`}
@@ -398,7 +381,7 @@ export default function TeamDisplay({
                       disabled={isAssigning || routeLinkOptions.length === 0}
                       className="min-h-10 w-full border border-[var(--border-default)] bg-[var(--card-bg)] px-2 text-xs text-[var(--foreground)]"
                     >
-                      <option value="">Link auswählen</option>
+                      <option value="">Route auswählen</option>
                       {routeLinkOptions.map(({ link, state, canAssign, disabledReason }) => (
                         <option key={link.route.id} value={link.route.id} disabled={!canAssign}>
                           {link.route.name} · {state.memberCount}/{state.expectedPlayerCount}
@@ -426,7 +409,7 @@ export default function TeamDisplay({
                     }}
                     className="flex min-h-28 w-full items-center justify-center text-xs font-bold uppercase tracking-wide text-[var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--player-color)]"
                   >
-                    + Link
+                    + Route
                   </button>
                 )
               ) : (

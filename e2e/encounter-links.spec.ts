@@ -62,7 +62,7 @@ function tableRows(page: Page) {
 }
 
 function routeLinkTrigger(row: Locator) {
-  return row.getByRole('button', { name: 'Link', exact: true });
+  return row.getByRole('button', { name: 'Route', exact: true });
 }
 
 async function skipWithoutRouteLink(trigger: Locator, surface: string) {
@@ -79,7 +79,7 @@ async function skipWithoutRouteLink(trigger: Locator, surface: string) {
 async function firstTableRouteLink(page: Page) {
   const trigger = page
     .locator('tbody th[scope="row"]')
-    .getByRole('button', { name: 'Link', exact: true })
+    .getByRole('button', { name: 'Route', exact: true })
     .first();
   await skipWithoutRouteLink(trigger, 'Die Tabelle');
   const row = trigger.locator('xpath=ancestor::tr').first();
@@ -100,9 +100,9 @@ async function openFirstCompleteRouteLink(page: Page) {
 
     await trigger.scrollIntoViewIfNeeded();
     await trigger.click();
-    const menu = page.getByRole('menu', { name: /Link\/Route verwalten/i });
+    const menu = page.getByRole('menu', { name: /Route verwalten/i });
     await expect(menu).toBeVisible();
-    const knockout = menu.getByRole('menuitem', { name: 'Link K.O. setzen' });
+    const knockout = menu.getByRole('menuitem', { name: 'K.O. setzen' });
     if (await knockout.isEnabled()) return { row, trigger, menu };
 
     await page.keyboard.press('Escape');
@@ -127,10 +127,10 @@ test.describe('Encounter-Link-Verwaltung', () => {
       .getByRole('button', { name: /\S+ verwalten$/i })
       .count();
     await trigger.click();
-    const menu = page.getByRole('menu', { name: /Link\/Route verwalten/i });
+    const menu = page.getByRole('menu', { name: /Route verwalten/i });
     await menu.getByRole('menuitem', { name: 'Teamplatz verwalten' }).click();
 
-    const dialog = page.getByRole('dialog', { name: 'Link-Teamplatz verwalten' });
+    const dialog = page.getByRole('dialog', { name: 'Teamplatz verwalten' });
     await expect(dialog).toBeVisible();
     const affectedHeading = dialog.getByRole('heading', { name: 'Betroffene Pokémon' });
     const affectedPokemon = dialog.locator('section').filter({
@@ -144,16 +144,16 @@ test.describe('Encounter-Link-Verwaltung', () => {
   test('verwendet das Link-Menü ebenfalls auf der Routenseite', async ({ page }) => {
     await openAdminSurface(page, '/pokeroute');
 
-    const trigger = page.getByRole('button', { name: 'Link verwalten', exact: true }).first();
+    const trigger = page.locator('.route-list-row').getByRole('button', { name: 'Route verwalten', exact: true }).first();
     await skipWithoutRouteLink(trigger, 'Die Routenseite');
     await trigger.scrollIntoViewIfNeeded();
     await trigger.click();
 
-    const menu = page.getByRole('menu', { name: /Link\/Route verwalten/i });
+    const menu = page.getByRole('menu', { name: /Route verwalten/i });
     await expect(menu.getByRole('menuitem', { name: 'Teamplatz verwalten' })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: 'Link K.O. setzen' })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: 'Link nicht gefangen' })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: 'Kompletten Link löschen' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'K.O. setzen' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Nicht gefangen' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Alle Pokémon der Route löschen' })).toBeVisible();
   });
 
   test('sendet K.O. für den kompletten Link mit optionalem Grund', async ({ page }) => {
@@ -161,16 +161,18 @@ test.describe('Encounter-Link-Verwaltung', () => {
     await openAdminSurface(page, '/tabelle');
     const { menu } = await openFirstCompleteRouteLink(page);
 
-    await menu.getByRole('menuitem', { name: 'Link K.O. setzen' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Link K.O. setzen' });
+    await menu.getByRole('menuitem', { name: 'K.O. setzen' }).click();
+    const dialog = page.getByRole('dialog', { name: 'K.O. setzen' });
     await expect(dialog.getByRole('heading', { name: 'Betroffene Pokémon' })).toBeVisible();
-    const playerSelect = dialog.getByLabel('Verursacher');
-    await expect(playerSelect.getByRole('option', { name: 'Spieler auswählen' })).toHaveJSProperty('disabled', true);
-    await playerSelect.selectOption({ index: 1 });
-    const selectedPlayer = await playerSelect.inputValue();
-    expect(selectedPlayer).not.toBe('');
-    await expect(dialog.getByLabel('Grund (optional)')).toBeVisible();
-    await dialog.getByRole('button', { name: 'Link K.O. setzen' }).click();
+    const confirm = dialog.getByRole('button', { name: 'K.O. setzen' });
+    await expect(confirm).toBeDisabled();
+    const playerButton = dialog.getByRole('group', { name: 'Verursacher' }).getByRole('button').first();
+    const selectedPlayer = await playerButton.innerText();
+    await playerButton.click();
+    await expect(playerButton).toHaveAttribute('aria-pressed', 'true');
+    await dialog.getByText('Grund hinzufügen (optional)').click();
+    await expect(dialog.getByLabel('Grund')).toBeVisible();
+    await confirm.click();
 
     await expect(dialog.getByRole('alert')).toContainText('sicher abgefangen');
     expect(captured).toHaveLength(1);
@@ -200,10 +202,10 @@ test.describe('Encounter-Link-Verwaltung', () => {
     await skipWithoutRouteLink(trigger, 'Die Tabelle');
     await trigger.scrollIntoViewIfNeeded();
     await trigger.click();
-    const menu = page.getByRole('menu', { name: /Link\/Route verwalten/i });
-    await menu.getByRole('menuitem', { name: 'Link aus Team entfernen' }).click();
+    const menu = page.getByRole('menu', { name: /Route verwalten/i });
+    await menu.getByRole('menuitem', { name: 'Aus Team entfernen' }).click();
 
-    const dialog = page.getByRole('dialog', { name: 'Link aus dem Team entfernen' });
+    const dialog = page.getByRole('dialog', { name: 'Route aus dem Team entfernen' });
     await dialog.getByRole('button', { name: 'Aus Team entfernen' }).click();
     await expect(dialog.getByRole('alert')).toContainText('sicher abgefangen');
 
@@ -227,11 +229,11 @@ test.describe('Encounter-Link-Verwaltung', () => {
       await trigger.scrollIntoViewIfNeeded();
       await trigger.focus();
       await trigger.press('ArrowDown');
-      const menu = page.getByRole('menu', { name: /Link\/Route verwalten/i });
+      const menu = page.getByRole('menu', { name: /Route verwalten/i });
       await expect(menu).toBeVisible();
       await menu.getByRole('menuitem', { name: 'Teamplatz verwalten' }).click();
 
-      const dialog = page.getByRole('dialog', { name: 'Link-Teamplatz verwalten' });
+      const dialog = page.getByRole('dialog', { name: 'Teamplatz verwalten' });
       await expect(dialog).toBeVisible();
       const bounds = await dialog.boundingBox();
       expect(bounds).not.toBeNull();
