@@ -40,6 +40,16 @@ interface ComparisonRequestState {
   error: string | null;
 }
 
+interface SettledRequestState {
+  requestKey: string;
+  error: string | null;
+}
+
+interface LoadMoreFailure {
+  requestKey: string;
+  message: string;
+}
+
 function hrefWithParams(pathname: string, params: URLSearchParams): string {
   const query = params.toString();
   return query ? `${pathname}?${query}` : pathname;
@@ -104,9 +114,8 @@ export default function StatistikClient() {
     [comparisonParam],
   );
   const [data, setData] = useState<PageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [settledRequest, setSettledRequest] = useState<SettledRequestState | null>(null);
+  const [loadMoreFailure, setLoadMoreFailure] = useState<LoadMoreFailure | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const [loadingMore, setLoadingMore] = useState<Set<string>>(new Set());
   const [comparisonRetryToken, setComparisonRetryToken] = useState(0);
@@ -117,6 +126,16 @@ export default function StatistikClient() {
   }, []);
 
   useLiveRefresh(STATISTICS_LIVE_TOPICS, reloadStatistics);
+
+  // Jede neue Anfrage verwirft Fehler und zeigt wieder den Ladezustand.
+  const statisticsRequestKey = `${selectedGame}:${reloadToken}`;
+  const loading = settledRequest?.requestKey !== statisticsRequestKey;
+  const error = settledRequest?.requestKey === statisticsRequestKey
+    ? settledRequest.error
+    : null;
+  const loadMoreError = loadMoreFailure?.requestKey === statisticsRequestKey
+    ? loadMoreFailure.message
+    : null;
 
   const comparisonPairKey = selectedRunIds.length === 2 ? selectedRunIds.join(',') : null;
   const comparisonRequestKey = comparisonPairKey
@@ -183,9 +202,6 @@ export default function StatistikClient() {
   useEffect(() => {
     const controller = new AbortController();
     const scope = encodeURIComponent(selectedGame);
-    setLoading(true);
-    setError(null);
-    setLoadMoreError(null);
 
     const historyPromise = fetchJson<HistoryResponse>(`/api/runs/history?game=${scope}&limit=10`, controller.signal);
     const previewsPromise = selectedGame === 'all'
@@ -211,22 +227,26 @@ export default function StatistikClient() {
             runTrends: analytics.runTrends || [],
           },
         });
+        setSettledRequest({ requestKey: statisticsRequestKey, error: null });
       })
       .catch((fetchError: unknown) => {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
-        setError(fetchError instanceof Error ? fetchError.message : 'Statistiken konnten nicht geladen werden.');
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        setSettledRequest({
+          requestKey: statisticsRequestKey,
+          error: fetchError instanceof Error ? fetchError.message : 'Statistiken konnten nicht geladen werden.',
+        });
       });
 
     return () => controller.abort();
-  }, [reloadToken, selectedGame]);
+  }, [selectedGame, statisticsRequestKey]);
+
+  const historyGroups = data?.history.groups;
+  const previewGroups = data?.previews.groups;
 
   const previewRunsByGame = useMemo(() => {
-    const entries = (data?.previews.groups || []).map((group) => [gameFilterKey(group.gameVersion), group.runs] as const);
+    const entries = (previewGroups || []).map((group) => [gameFilterKey(group.gameVersion), group.runs] as const);
     return new Map(entries);
-  }, [data?.previews.groups]);
+  }, [previewGroups]);
 
   const comparisonData = comparisonRequest?.requestKey === comparisonRequestKey
     ? comparisonRequest.data
@@ -239,10 +259,10 @@ export default function StatistikClient() {
 
   const selectedRunSummaries = useMemo(() => {
     const byId = new Map<number, RunSummary>();
-    for (const group of data?.history.groups || []) {
+    for (const group of historyGroups || []) {
       for (const run of group.runs) byId.set(run.id, run);
     }
-    for (const group of data?.previews.groups || []) {
+    for (const group of previewGroups || []) {
       for (const run of group.runs) byId.set(run.id, run);
     }
     if (comparisonData) {
@@ -250,7 +270,7 @@ export default function StatistikClient() {
       byId.set(comparisonData.right.run.id, comparisonData.right.run);
     }
     return selectedRunIds.map((id) => byId.get(id) || null);
-  }, [comparisonData, data?.history.groups, data?.previews.groups, selectedRunIds]);
+  }, [comparisonData, historyGroups, previewGroups, selectedRunIds]);
 
   const openComparison = useCallback(() => {
     document.getElementById('run-comparison')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -259,7 +279,7 @@ export default function StatistikClient() {
   async function loadMore(group: HistoryGroup) {
     if (group.nextCursor === null) return;
     const gameKey = gameFilterKey(group.gameVersion);
-    setLoadMoreError(null);
+    setLoadMoreFailure(null);
     setLoadingMore((current) => new Set(current).add(gameKey));
 
     try {
@@ -289,7 +309,10 @@ export default function StatistikClient() {
         };
       });
     } catch (loadError) {
-      setLoadMoreError(loadError instanceof Error ? loadError.message : 'Weitere Runs konnten nicht geladen werden.');
+      setLoadMoreFailure({
+        requestKey: statisticsRequestKey,
+        message: loadError instanceof Error ? loadError.message : 'Weitere Runs konnten nicht geladen werden.',
+      });
     } finally {
       setLoadingMore((current) => {
         const next = new Set(current);

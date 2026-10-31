@@ -130,16 +130,26 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const pokemonOptionsRequest = useRef<Promise<void> | null>(null);
   const pokemonOptionsGeneration = useRef(0);
+  const [syncedRows, setSyncedRows] = useState(rows);
+  const [syncedIsAdmin, setSyncedIsAdmin] = useState(isAdmin);
 
-  useEffect(() => {
+  // Neue Server-Daten (router.refresh) ersetzen den lokalen Stand.
+  if (syncedRows !== rows) {
+    setSyncedRows(rows);
     setTableRows(rows);
-  }, [rows]);
+  }
+
+  if (syncedIsAdmin !== isAdmin) {
+    setSyncedIsAdmin(isAdmin);
+    if (!isAdmin) {
+      setPokemonOptions(null);
+      setPokemonOptionsLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (isAdmin) return;
     pokemonOptionsGeneration.current += 1;
-    setPokemonOptions(null);
-    setPokemonOptionsLoading(false);
     pokemonOptionsRequest.current = null;
   }, [isAdmin]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type {
   SavedComparisonSetV2,
   TeamComparisonSelection,
@@ -36,6 +36,43 @@ function formatSetDate(createdAt: string): string {
   }).format(new Date(createdAt));
 }
 
+/**
+ * Liest die Sets und migriert dabei Altbestände; ein erneuter Aufruf findet die
+ * bereits migrierten Daten vor. PokeradarClient rendert diese Komponente erst
+ * nach dem clientseitigen Laden der Pokémon, sie braucht daher keine Hydration.
+ */
+function loadStoredSets(
+  storageKey: string,
+  legacyStorageKey: string,
+): { sets: SavedComparisonSetV2[]; error: string } {
+  if (typeof window === 'undefined') return { sets: [], error: '' };
+
+  try {
+    const parsed = parseSavedComparisonSets(
+      window.localStorage.getItem(storageKey),
+      window.localStorage.getItem(legacyStorageKey),
+      new Date().toISOString(),
+    );
+    if (parsed.migratedLegacy) {
+      try {
+        window.localStorage.setItem(
+          storageKey,
+          serializeSavedComparisonSets(parsed.sets),
+        );
+        window.localStorage.removeItem(legacyStorageKey);
+      } catch {
+        return {
+          sets: parsed.sets,
+          error: 'Die bisherigen Teamstände wurden gelesen, konnten aber noch nicht dauerhaft migriert werden.',
+        };
+      }
+    }
+    return { sets: parsed.sets, error: '' };
+  } catch {
+    return { sets: [], error: 'Gespeicherte Vergleichssets konnten nicht gelesen werden.' };
+  }
+}
+
 export default function SavedComparisonSets({
   currentSelection,
   onLoad,
@@ -43,39 +80,10 @@ export default function SavedComparisonSets({
   legacyStorageKey = LEGACY_TEAM_SNAPSHOTS_STORAGE_KEY,
   className = '',
 }: SavedComparisonSetsProps) {
-  const [sets, setSets] = useState<SavedComparisonSetV2[]>([]);
+  const [initialStorage] = useState(() => loadStoredSets(storageKey, legacyStorageKey));
+  const [sets, setSets] = useState(initialStorage.sets);
   const [label, setLabel] = useState('');
-  const [hydrated, setHydrated] = useState(false);
-  const [storageError, setStorageError] = useState('');
-
-  useEffect(() => {
-    try {
-      const parsed = parseSavedComparisonSets(
-        window.localStorage.getItem(storageKey),
-        window.localStorage.getItem(legacyStorageKey),
-        new Date().toISOString(),
-      );
-      setSets(parsed.sets);
-      if (parsed.migratedLegacy) {
-        try {
-          window.localStorage.setItem(
-            storageKey,
-            serializeSavedComparisonSets(parsed.sets),
-          );
-          window.localStorage.removeItem(legacyStorageKey);
-        } catch {
-          setStorageError(
-            'Die bisherigen Teamstände wurden gelesen, konnten aber noch nicht dauerhaft migriert werden.',
-          );
-        }
-      }
-    } catch {
-      setSets([]);
-      setStorageError('Gespeicherte Vergleichssets konnten nicht gelesen werden.');
-    } finally {
-      setHydrated(true);
-    }
-  }, [legacyStorageKey, storageKey]);
+  const [storageError, setStorageError] = useState(initialStorage.error);
 
   const suggestedLabel = useMemo(
     () => currentSelection.sourceLabel || `Vergleich ${sets.length + 1}`,
@@ -98,7 +106,6 @@ export default function SavedComparisonSets({
 
   const saveCurrentSelection = () => {
     if (
-      !hydrated ||
       sets.length >= MAX_SAVED_COMPARISON_SETS ||
       currentSelection.pokemonIds.length === 0
     ) {
@@ -126,7 +133,6 @@ export default function SavedComparisonSets({
   };
 
   const canSave =
-    hydrated &&
     currentSelection.pokemonIds.length > 0 &&
     sets.length < MAX_SAVED_COMPARISON_SETS;
 
@@ -185,12 +191,10 @@ export default function SavedComparisonSets({
             </li>
           ))}
         </ol>
-      ) : hydrated ? (
+      ) : (
         <p className="mt-4 border border-dashed border-[var(--border-default)] bg-[var(--background-secondary)] p-3 text-sm text-[var(--text-secondary)]">
           Noch kein Vergleichsset gespeichert.
         </p>
-      ) : (
-        <div className="mt-4 h-20 animate-pulse bg-[var(--background-tertiary)]" aria-label="Vergleichssets werden geladen" />
       )}
 
       <div className="mt-4 border-t border-[var(--border-default)] pt-4">
@@ -202,7 +206,7 @@ export default function SavedComparisonSets({
             onChange={(event) => setLabel(event.target.value)}
             placeholder={suggestedLabel}
             maxLength={80}
-            disabled={!hydrated || sets.length >= MAX_SAVED_COMPARISON_SETS}
+            disabled={sets.length >= MAX_SAVED_COMPARISON_SETS}
             className="mt-1.5 min-h-11 w-full border border-[var(--border-default)] bg-[var(--background-secondary)] px-3 text-sm text-[var(--foreground)] placeholder:text-[var(--text-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </label>
