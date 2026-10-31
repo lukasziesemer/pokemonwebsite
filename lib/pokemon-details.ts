@@ -70,6 +70,7 @@ export interface EvolutionCondition {
   partyType?: string;
   tradeSpecies?: string;
   introducedVersionGroup?: string;
+  // PokeAPI form ids: a default form shares its species id, other forms do not.
   basePokedexId?: number;
   evolvedPokedexId?: number;
 }

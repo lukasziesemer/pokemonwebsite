@@ -52,6 +52,18 @@ describe('edition-aware evolution comparison', () => {
     expect(scoped.nodes.map(entry => entry.pokedexId)).toEqual([263, 264]);
   });
 
+  it('keeps default forms, whose form id equals the species id', () => {
+    const family: PokemonEvolutionDetails = {
+      nodes: [node(412, 4), node(413, 4)],
+      edges: [{ fromPokedexId: 412, toPokedexId: 413, conditions: [
+        condition('diamond-pearl', 'Level 20 · Pflanze', { basePokedexId: 412, evolvedPokedexId: 413 }),
+        condition('diamond-pearl', 'Level 20 · Sand', { basePokedexId: 10034, evolvedPokedexId: 10036 }),
+      ] }],
+    };
+    const scoped = scopeEvolutionToEdition(family, 412, 'black2', orders);
+    expect(scoped.edges[0].conditions.map(entry => entry.label)).toEqual(['Level 20 · Pflanze']);
+  });
+
   it('does not invent an edge around a later-added baby species', () => {
     const family: PokemonEvolutionDetails = {
       nodes: [node(172, 2), node(25, 1), node(26, 1)],

@@ -59,8 +59,8 @@ interface PokeApiMove extends PokeApiMoveMetadata {
 
 interface PokeApiEvolutionDetail {
   version_group?: NamedResource | null;
-  base_form?: NamedResource | null;
-  evolved_form?: NamedResource | null;
+  required_pokemon_form?: NamedResource | null;
+  evolved_pokemon_form?: NamedResource | null;
   near_special_rock?: boolean;
   needs_multiplayer?: boolean;
   used_move?: NamedResource | null;
@@ -337,8 +337,8 @@ export function formatEvolutionCondition(detail: PokeApiEvolutionDetail): Evolut
     ...(partyType ? { partyType } : {}),
     ...(tradeSpecies ? { tradeSpecies } : {}),
     ...(detail.version_group ? { introducedVersionGroup: detail.version_group.name } : {}),
-    ...(detail.base_form ? { basePokedexId: extractId(detail.base_form) } : {}),
-    ...(detail.evolved_form ? { evolvedPokedexId: extractId(detail.evolved_form) } : {}),
+    ...(detail.required_pokemon_form ? { basePokedexId: extractId(detail.required_pokemon_form) } : {}),
+    ...(detail.evolved_pokemon_form ? { evolvedPokedexId: extractId(detail.evolved_pokemon_form) } : {}),
   };
 }
 

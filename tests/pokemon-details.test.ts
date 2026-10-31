@@ -277,4 +277,31 @@ describe('evolution conditions', () => {
     expect(result.label).toBe('Level 30 · Freundschaft 220+ · nachts');
     expect(result).toMatchObject({ minLevel: 30, minHappiness: 220, timeOfDay: 'night' });
   });
+
+  it('reads form restrictions from the PokeAPI form fields', () => {
+    const result = formatEvolutionCondition({
+      trigger: { name: 'level-up', url: '' },
+      required_pokemon_form: { name: 'zigzagoon-galar', url: 'https://pokeapi.co/api/v2/pokemon-form/10333/' },
+      evolved_pokemon_form: { name: 'linoone-galar', url: 'https://pokeapi.co/api/v2/pokemon-form/10334/' },
+      item: null,
+      held_item: null,
+      known_move: null,
+      known_move_type: null,
+      location: null,
+      min_level: 20,
+      min_happiness: null,
+      min_beauty: null,
+      min_affection: null,
+      time_of_day: '',
+      gender: null,
+      relative_physical_stats: null,
+      needs_overworld_rain: false,
+      turn_upside_down: false,
+      party_species: null,
+      party_type: null,
+      trade_species: null,
+    });
+
+    expect(result).toMatchObject({ basePokedexId: 10333, evolvedPokedexId: 10334 });
+  });
 });
