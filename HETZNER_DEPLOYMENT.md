@@ -490,31 +490,23 @@ docker compose up -d --build
 
 ### Backups
 
+Auf dem Server sichert ein systemd-Timer, kein Cronjob: `pokemon-backup.timer` startet jede Nacht um 03:00 Uhr `pokemon-backup.service`. Dabei passiert Folgendes:
+
+- Datenbank-Dump mit `pg_dump -Fc`, danach eine Probe-Wiederherstellung in eine Test-Datenbank
+- Sicherung von Dump, Avatar-Uploads, `.env` und `docker-compose.yml` mit borgmatic in ein verschluesseltes Repository auf der Hetzner Storage Box
+- Aufbewahrung: 14 taegliche, 8 woechentliche und 12 monatliche Archive, dazu die letzten 14 Dumps lokal in `/var/backups/pokemon`
+- Ueberwachung ueber healthchecks.io: Bleibt das Backup aus oder schlaegt es fehl, kommt eine Mail
+
 #### Manuelles Backup
 
-```bash
-cd /opt/pokemonwebsite
-
-# Datenbank sichern
-docker compose exec db pg_dump -U pokemon pokemon > backup_$(date +%Y%m%d).sql
-```
-
-#### Automatisches Backup (taeglich um 3 Uhr)
+Vor jedem Deploy ein Backup starten: Der `migrate`-Service fuehrt bei `docker compose up` `prisma db push --accept-data-loss` aus.
 
 ```bash
-# Backup-Ordner erstellen
-mkdir -p /opt/backups
-
-# Cronjob einrichten
-crontab -e
-
-# Diese Zeilen hinzufuegen:
-# Taegliches Backup
-0 3 * * * cd /opt/pokemonwebsite && docker compose exec -T db pg_dump -U pokemon pokemon | gzip > /opt/backups/pokemon_$(date +\%Y\%m\%d).sql.gz
-
-# Alte Backups nach 30 Tagen loeschen
-0 4 * * * find /opt/backups -name "*.sql.gz" -mtime +30 -delete
+sudo systemctl start pokemon-backup.service
+systemctl show -p Result --value pokemon-backup.service  # erwartet: success
 ```
+
+Dumps nicht von Hand nach `/opt` oder ins Projekt legen. Sie enthalten Nutzerdaten und waeren dort je nach Rechten fuer andere Benutzer lesbar.
 
 ### Container-Befehle
 
@@ -594,9 +586,6 @@ tail -f /var/log/nginx/error.log
 ```bash
 # Docker aufraeumen
 docker system prune -a
-
-# Alte Backups loeschen
-find /opt/backups -mtime +30 -delete
 ```
 
 ---

@@ -473,37 +473,25 @@ docker compose logs -f app
 
 ## Backup-Strategie
 
+Auf dem Server sichert ein systemd-Timer, kein Cronjob: `pokemon-backup.timer` startet jede Nacht um 03:00 Uhr `pokemon-backup.service`. Dabei passiert Folgendes:
+
+- Datenbank-Dump mit `pg_dump -Fc`, danach eine Probe-Wiederherstellung in eine Test-Datenbank
+- Sicherung von Dump, Avatar-Uploads, `.env` und `docker-compose.yml` mit borgmatic in ein verschlüsseltes Repository auf der Storage Box
+- Aufbewahrung: 14 tägliche, 8 wöchentliche und 12 monatliche Archive, dazu die letzten 14 Dumps lokal in `/var/backups/pokemon`
+- Überwachung über healthchecks.io: Bleibt das Backup aus oder schlägt es fehl, kommt eine Mail
+
+Der Bild-Cache wird nicht gesichert, er entsteht von selbst neu.
+
 ### Manuelles Backup
 
-```bash
-cd /opt/pokemonwebsite
-
-# Datenbank-Backup
-docker compose exec db pg_dump -U pokemon pokemon > backup_$(date +%Y%m%d).sql
-
-# Backup komprimieren
-gzip backup_*.sql
-```
-
-### Automatisches Backup (Cronjob)
+Vor jedem Deploy ein Backup starten: Der `migrate`-Service führt bei `docker compose up` `prisma db push --accept-data-loss` aus.
 
 ```bash
-# Crontab bearbeiten
-crontab -e
-
-# Tägliches Backup um 3 Uhr nachts
-0 3 * * * cd /opt/pokemonwebsite && docker compose exec -T db pg_dump -U pokemon pokemon | gzip > /opt/backups/pokemon_$(date +\%Y\%m\%d).sql.gz
-
-# Alte Backups nach 30 Tagen löschen
-0 4 * * * find /opt/backups -name "*.sql.gz" -mtime +30 -delete
+sudo systemctl start pokemon-backup.service
+systemctl show -p Result --value pokemon-backup.service  # erwartet: success
 ```
 
-### Backup-Verzeichnis erstellen
-
-```bash
-sudo mkdir -p /opt/backups
-sudo chown $USER:$USER /opt/backups
-```
+Dumps nicht von Hand nach `/opt` oder ins Projekt legen. Sie enthalten Nutzerdaten und wären dort je nach Rechten für andere Benutzer lesbar.
 
 ---
 
@@ -554,9 +542,6 @@ docker system prune -a
 
 # Nur ungenutzte Images
 docker image prune -a
-
-# Alte Backups löschen
-find /opt/backups -mtime +30 -delete
 ```
 
 ### Migration schlägt fehl
