@@ -83,6 +83,7 @@ export default function RouteLinkActionMenu({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teamSlot, setTeamSlot] = useState('none');
+  const [restoreTeamSlot, setRestoreTeamSlot] = useState(true);
   const [causedBy, setCausedBy] = useState('');
   const [reason, setReason] = useState('');
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -111,10 +112,14 @@ export default function RouteLinkActionMenu({
   const firstFreeSlot = link.occupiedTeamSlots
     ? getFirstFreeTeamSlot(link.occupiedTeamSlots)
     : null;
+  const lastTeamSlot = link.encounters.find((encounter) => encounter.lastTeamSlot)?.lastTeamSlot ?? null;
+  const lastTeamSlotOccupant = lastTeamSlot === null ? null : link.occupiedTeamSlots?.[lastTeamSlot] ?? null;
+  const canRestoreTeamSlot = lastTeamSlot !== null && !lastTeamSlotOccupant && state.isComplete;
   const teamSlotChange = teamSlot === 'none' ? null : describeTeamSlotChange(Number(teamSlot), link);
 
   const resetForm = useCallback((action: Exclude<DialogAction, null>) => {
     setError(null);
+    setRestoreTeamSlot(true);
     setCausedBy(playerOptions.length === 1 ? playerOptions[0].name : '');
     setReason('');
     if (action === 'remove-from-team' || state.teamSlot === 'mixed') {
@@ -279,7 +284,11 @@ export default function RouteLinkActionMenu({
         void submit({ action: 'not-caught', causedBy, reason: reason || null });
         break;
       case 'reactivate':
-        void submit({ action: 'reactivate' });
+        void submit(
+          canRestoreTeamSlot && restoreTeamSlot
+            ? { action: 'reactivate', teamSlot: lastTeamSlot }
+            : { action: 'reactivate' },
+        );
         break;
       case 'delete-link':
         void submit({ action: 'delete-link' });
@@ -327,7 +336,7 @@ export default function RouteLinkActionMenu({
     },
     reactivate: {
       title: 'Route reaktivieren',
-      description: `${link.route.name}: K.O.- und Nicht-gefangen-Metadaten werden für alle betroffenen Pokémon entfernt. Ein früherer Teamplatz kommt nur über „Rückgängig“ direkt nach dem Setzen zurück.`,
+      description: `${link.route.name}: K.O.- und Nicht-gefangen-Metadaten werden für alle betroffenen Pokémon entfernt.`,
       confirm: 'Reaktivieren',
     },
     'delete-link': {
@@ -557,6 +566,25 @@ export default function RouteLinkActionMenu({
                 />
               </details>
             </>
+          ) : null}
+
+          {dialogAction === 'reactivate' && canRestoreTeamSlot ? (
+            <label className="flex min-h-11 items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
+              <input
+                type="checkbox"
+                checked={restoreTeamSlot}
+                onChange={(event) => setRestoreTeamSlot(event.target.checked)}
+                disabled={busy}
+                className="h-4 w-4 accent-[var(--brand-red)]"
+              />
+              Platz {lastTeamSlot} wieder einnehmen
+            </label>
+          ) : null}
+
+          {dialogAction === 'reactivate' && lastTeamSlotOccupant ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Platz {lastTeamSlot} ist inzwischen von {lastTeamSlotOccupant.routeName} belegt. Die Route kommt ohne Teamplatz zurück.
+            </p>
           ) : null}
 
           {dialogAction === 'delete-link' ? (

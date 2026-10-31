@@ -59,6 +59,7 @@ interface RouteEncounterMeta {
   id: number;
   nickname: string | null;
   teamSlot: number | null;
+  lastTeamSlot: number | null;
   isKnockedOut: boolean;
   koCausedBy: string | null;
   koReason: string | null;
@@ -132,6 +133,7 @@ export default function PokerouteClient({
   const { isAdmin } = useAuth();
   const [newRouteName, setNewRouteName] = useState('');
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [createdRouteId, setCreatedRouteId] = useState<number | null>(null);
   const [undoableChange, setUndoableChange] = useState<RouteStatusChange | null>(null);
   const [loadedPokemon, setLoadedPokemon] = useState<Pokemon[]>([]);
@@ -199,6 +201,7 @@ export default function PokerouteClient({
     if (!newRouteName.trim()) return;
 
     setIsCreatingRoute(true);
+    setCreateError(null);
     try {
       // Berechne die nächste Order-Nummer
       const maxOrder = routes.length > 0 
@@ -217,7 +220,7 @@ export default function PokerouteClient({
       await reloadData();
       setCreatedRouteId(createdRoute.id);
     } catch (error: unknown) {
-      alert(`Fehler beim Erstellen: ${getErrorMessage(error)}`);
+      setCreateError(`Fehler beim Erstellen: ${getErrorMessage(error)}`);
     } finally {
       setIsCreatingRoute(false);
     }
@@ -333,6 +336,11 @@ export default function PokerouteClient({
                 {isCreatingRoute ? 'Erstellt…' : 'Route erstellen'}
               </button>
             </form>
+          ) : null}
+          {createError ? (
+            <p role="alert" className="mb-4 border-l-4 border-red-500 bg-red-500/5 px-3 py-2 text-sm font-bold text-red-700 dark:text-red-300">
+              {createError}
+            </p>
           ) : null}
           {isAdmin && players.length > 0 ? (
             <RouteCapturePanel

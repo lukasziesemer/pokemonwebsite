@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
   return withAdminAuthAndErrorHandling(async () => {
     const body = await request.json();
     const { gameVersionKey } = body;
+    if (!gameVersionKey) return badRequest('Bitte wähle eine Spielversion für den Run aus');
 
     const maxRetries = 3;
 

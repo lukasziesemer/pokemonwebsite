@@ -244,13 +244,13 @@ test.describe('Encounter-Dialoge', () => {
     await page.getByRole('menuitem', { name: 'Pokémon tauschen' }).click();
 
     const dialog = page.getByRole('dialog', { name: 'Pokémon tauschen' });
-    const search = dialog.getByRole('searchbox');
+    const search = dialog.getByRole('combobox');
     await expect(search).toBeFocused();
     await expect(dialog.getByRole('button', { name: 'Pokémon tauschen' })).toBeDisabled();
     await search.fill('bisaknosp');
     await expect(dialog.getByRole('option')).toHaveCount(1);
     await search.press('Enter');
-    await expect(dialog.getByRole('option')).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.getByRole('status')).toHaveText(/^Neu: #2 Bisaknosp$/);
     expect(requests).toEqual([]);
     await search.press('Enter');
 

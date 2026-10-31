@@ -56,6 +56,7 @@ async function getRoutes() {
         id: e.id,
         nickname: e.nickname,
         teamSlot: e.teamSlot,
+        lastTeamSlot: e.lastTeamSlot,
         isKnockedOut: e.isKnockedOut,
         koCausedBy: e.koCausedBy,
         koReason: e.koReason,

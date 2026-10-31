@@ -372,12 +372,12 @@ npx prisma db push
 ### Admin APIs (geschuetzt)
 - **Players**: `/api/admin/players`
 - **Avatare**: `/api/admin/avatars/upload`, `/api/admin/avatars/[filename]`
-- **Routes**: `/api/admin/routes` (inkl. `/[id]/knockout`, `/[id]/notcaught`, `/[id]/set-team-slot`)
+- **Routes**: `/api/admin/routes`, `/api/admin/route-templates`
 - **Encounters**: `/api/admin/encounters` (inkl. `/[id]/evolve`)
 - **Encounter-Links**: `/api/admin/encounter-links/[routeId]`, `/api/admin/encounter-links/audit`
 - **Pokemon**: `/api/admin/pokemon/sync`, `/api/admin/pokemon/sync/progress`, `/api/admin/pokemon/sync-gifs`, `/api/admin/pokemon/add`, `/api/admin/pokemon/options`
-- **Gamesaves**: `/api/admin/gamesaves` (inkl. `/[id]/download`, `/import`, `/load`, `/newgame`, `/reset`)
-- **Runs**: `/api/admin/runs` (inkl. `/[id]/end`, `/[id]/reopen`, `/next`, `/restart`), `/api/runs/badges`, `/api/runs/pause`
+- **Gamesaves**: `/api/admin/gamesaves` (inkl. `/[id]/download`, `/import`, `/load`)
+- **Runs**: `/api/admin/runs` (inkl. `/[id]/end`, `/[id]/reopen`, `/next`), `/api/runs/badges`, `/api/runs/pause`
 - **Spielversionen**: `/api/admin/game-versions`
 - **Streams**: `/api/admin/streams`
 - **CSV-Import**: `/api/admin/import/csv`

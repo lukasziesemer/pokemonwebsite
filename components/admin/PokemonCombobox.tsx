@@ -11,6 +11,8 @@ interface PokemonComboboxProps {
   options: PokemonListItem[];
   onSelect: (pokemon: PokemonListItem) => void;
   disabled?: boolean;
+  /** Erstes Feld in EncounterAdminDialog. */
+  autoFocusInDialog?: boolean;
 }
 
 /**
@@ -19,7 +21,7 @@ interface PokemonComboboxProps {
  * frei, damit ein umgebendes Formular abgeschickt werden kann.
  */
 const PokemonCombobox = forwardRef<HTMLInputElement, PokemonComboboxProps>(function PokemonCombobox(
-  { label, value, onChange, options, onSelect, disabled = false },
+  { label, value, onChange, options, onSelect, disabled = false, autoFocusInDialog = false },
   ref,
 ) {
   const [open, setOpen] = useState(false);
@@ -66,6 +68,7 @@ const PokemonCombobox = forwardRef<HTMLInputElement, PokemonComboboxProps>(funct
         ref={ref}
         type="text"
         role="combobox"
+        data-autofocus={autoFocusInDialog || undefined}
         aria-label={label}
         aria-autocomplete="list"
         aria-expanded={showList}

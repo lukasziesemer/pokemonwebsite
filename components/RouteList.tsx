@@ -328,6 +328,7 @@ const RouteList = memo(function RouteList({
 }: RouteListProps) {
   // State
   const [processing, setProcessing] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
   const [addPokemonSearch, setAddPokemonSearch] = useState<Record<string, string>>({});
   const [addingPokemon, setAddingPokemon] = useState<Record<string, boolean>>({});
   
@@ -394,7 +395,7 @@ const RouteList = memo(function RouteList({
       await onTeamUpdate?.(); // Warte auf Daten-Reload
       focusNextCapture(routeId);
     } catch (error) {
-      alert(`Fehler beim Hinzufuegen: ${getErrorMessage(error)}`);
+      setListError(`Fehler beim Hinzufuegen: ${getErrorMessage(error)}`);
     } finally {
       setAddingPokemon((current) => ({ ...current, [key]: false }));
     }
@@ -406,7 +407,7 @@ const RouteList = memo(function RouteList({
       await mutateEncounterLink(routeId, { action: 'set-team-slot', teamSlot });
       await onTeamUpdate?.(); // Warte auf Daten-Reload
     } catch (error) {
-      alert(`Fehler beim Hinzufügen zum Team: ${getErrorMessage(error)}`);
+      setListError(`Fehler beim Hinzufügen zum Team: ${getErrorMessage(error)}`);
     } finally {
       setProcessing(false);
     }
@@ -440,7 +441,7 @@ const RouteList = memo(function RouteList({
       setEditingRouteId(null);
       await onTeamUpdate?.(); // Warte auf Daten-Reload
     } catch (error) {
-      alert(`Fehler beim Umbenennen: ${getErrorMessage(error)}`);
+      setListError(`Fehler beim Umbenennen: ${getErrorMessage(error)}`);
     } finally {
       setProcessing(false);
     }
@@ -461,7 +462,7 @@ const RouteList = memo(function RouteList({
       await fetchJson(`/api/admin/routes/${routeId}`, { method: 'DELETE' });
       await onTeamUpdate?.(); // Warte auf Daten-Reload
     } catch (error) {
-      alert(`Fehler beim Loeschen: ${getErrorMessage(error)}`);
+      setListError(`Fehler beim Loeschen: ${getErrorMessage(error)}`);
     } finally {
       setProcessing(false);
     }
@@ -495,7 +496,7 @@ const RouteList = memo(function RouteList({
       ]);
       await onTeamUpdate?.(); // Warte auf Daten-Reload
     } catch (error) {
-      alert(`Fehler beim Verschieben: ${getErrorMessage(error)}`);
+      setListError(`Fehler beim Verschieben: ${getErrorMessage(error)}`);
     } finally {
       setProcessing(false);
     }
@@ -517,6 +518,13 @@ const RouteList = memo(function RouteList({
 
   return (
     <>
+      {listError ? (
+        <div role="alert" className="flex items-center justify-between gap-3 border-l-4 border-red-500 bg-red-500/5 px-3 py-2 text-sm font-bold text-red-700 dark:text-red-300">
+          <p>{listError}</p>
+          <button type="button" onClick={() => setListError(null)} className="app-action">Schließen</button>
+        </div>
+      ) : null}
+
       <div role="search" aria-label="Routen" className="app-toolbar">
         <input
           type="search"
@@ -712,8 +720,11 @@ const RouteList = memo(function RouteList({
                                           pokemonOptions={pokemon}
                                           gameVersionKey={gameVersionKey}
                                           compact
+                                          // Im Team würde ein einzelnes Löschen die Route unvollständig machen.
+                                          scope={encounter.teamSlot === null ? 'repair' : 'individual'}
                                           disabled={processing}
                                           onUpdated={() => { void onTeamUpdate?.(); }}
+                                          onDeleted={() => { void onTeamUpdate?.(); }}
                                         />
                                       </div>
                                     ) : null}
