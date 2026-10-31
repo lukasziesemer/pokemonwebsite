@@ -10,6 +10,8 @@ import {
   type EncounterLinkAdminErrorResponse,
   type EncounterLinkAdminResponse,
   type EncounterLinkConsistencyInput,
+  type RouteCaptureRequest,
+  type RouteCaptureResponse,
 } from '@/lib/encounter-link-admin';
 import {
   encounterAdminInclude,
@@ -25,6 +27,57 @@ export type EncounterLinkExecutionResult =
       error: string;
       conflict?: EncounterLinkAdminErrorResponse['conflict'];
     };
+
+export type RouteCaptureExecutionResult =
+  | { ok: true; response: RouteCaptureResponse }
+  | {
+      ok: false;
+      status: 400 | 404 | 409;
+      error: string;
+      conflict?: EncounterLinkAdminErrorResponse['conflict'];
+    };
+
+function teamMembersForEvent(encounters: EncounterAdminPayload[]) {
+  return encounters.map((encounter) => ({
+    pokemonName: encounter.pokemon.name,
+    pokemonNameGerman: encounter.pokemon.nameGerman ?? undefined,
+    spriteUrl: encounter.pokemon.spriteUrl ?? undefined,
+    playerName: encounter.player.name,
+  }));
+}
+
+function emitTeamLinkAdded(encounters: EncounterAdminPayload[], teamSlot: number) {
+  emitEvent('team_link_added', {
+    routeName: encounters[0]?.route.name,
+    teamSlot,
+    teamMembers: teamMembersForEvent(encounters),
+  });
+}
+
+function emitInactiveLinkEvent(
+  type: 'pokemon_ko' | 'pokemon_not_caught',
+  encounters: EncounterAdminPayload[],
+  causedBy: string,
+) {
+  const causedByMatch = encounters.find((encounter) => encounter.player.name === causedBy);
+  const representative = causedByMatch ?? encounters[0];
+  emitEvent(type, {
+    pokemonName: representative.pokemon.name,
+    pokemonNameGerman: representative.pokemon.nameGerman ?? undefined,
+    spriteUrl: representative.pokemon.spriteUrl ?? undefined,
+    playerName: causedBy,
+    routeName: representative.route.name,
+  });
+}
+
+function teamSlotConflict(routeId: number, routeName: string, teamSlot: number) {
+  return {
+    ok: false as const,
+    status: 409 as const,
+    error: `Teamplatz ${teamSlot} ist bereits mit Route „${routeName}“ verknüpft`,
+    conflict: { routeId, routeName, teamSlot },
+  };
+}
 
 function toConsistencyInput(encounter: EncounterAdminPayload): EncounterLinkConsistencyInput {
   return {
@@ -187,16 +240,7 @@ export async function executeEncounterLinkAdminAction(
         };
       }
       if (result.kind === 'slot-conflict') {
-        return {
-          ok: false,
-          status: 409,
-          error: `Teamplatz ${result.teamSlot} ist bereits mit Route „${result.routeName}“ verknüpft`,
-          conflict: {
-            routeId: result.routeId,
-            routeName: result.routeName,
-            teamSlot: result.teamSlot,
-          },
-        };
+        return teamSlotConflict(result.routeId, result.routeName, result.teamSlot);
       }
 
       const response: EncounterLinkAdminResponse = {
@@ -214,17 +258,11 @@ export async function executeEncounterLinkAdminAction(
         result.kind === 'updated' &&
         (action.action === 'knockout' || action.action === 'not-caught')
       ) {
-        const causedByMatch = result.encounters.find(
-          (encounter) => encounter.player.name === action.causedBy,
+        emitInactiveLinkEvent(
+          action.action === 'knockout' ? 'pokemon_ko' : 'pokemon_not_caught',
+          result.encounters,
+          action.causedBy,
         );
-        const representative = causedByMatch ?? result.encounters[0];
-        emitEvent(action.action === 'knockout' ? 'pokemon_ko' : 'pokemon_not_caught', {
-          pokemonName: representative.pokemon.name,
-          pokemonNameGerman: representative.pokemon.nameGerman ?? undefined,
-          spriteUrl: representative.pokemon.spriteUrl ?? undefined,
-          playerName: action.causedBy,
-          routeName: representative.route.name,
-        });
       }
 
       if (
@@ -233,16 +271,7 @@ export async function executeEncounterLinkAdminAction(
         action.teamSlot !== null &&
         result.wasCompletelyOutsideTeam
       ) {
-        emitEvent('team_link_added', {
-          routeName: result.encounters[0]?.route.name,
-          teamSlot: action.teamSlot,
-          teamMembers: result.encounters.map((encounter) => ({
-            pokemonName: encounter.pokemon.name,
-            pokemonNameGerman: encounter.pokemon.nameGerman ?? undefined,
-            spriteUrl: encounter.pokemon.spriteUrl ?? undefined,
-            playerName: encounter.player.name,
-          })),
-        });
+        emitTeamLinkAdded(result.encounters, action.teamSlot);
       }
 
       if (
@@ -254,12 +283,7 @@ export async function executeEncounterLinkAdminAction(
         emitEvent('team_link_boxed', {
           routeName: result.encounters[0]?.route.name,
           teamSlot: result.previousTeamSlot,
-          teamMembers: result.encounters.map((encounter) => ({
-            pokemonName: encounter.pokemon.name,
-            pokemonNameGerman: encounter.pokemon.nameGerman ?? undefined,
-            spriteUrl: encounter.pokemon.spriteUrl ?? undefined,
-            playerName: encounter.player.name,
-          })),
+          teamMembers: teamMembersForEvent(result.encounters),
         });
       }
 
@@ -285,6 +309,185 @@ export async function executeEncounterLinkAdminAction(
     status: 409,
     error: 'Parallele Link-Änderung erkannt. Bitte erneut versuchen.',
   };
+}
+
+/**
+ * Records a whole catch in one transaction: the Pokémon of every player plus
+ * the route's team slot or status. A rejected capture leaves nothing behind.
+ */
+export async function executeRouteCapture(
+  routeId: number,
+  { catches, outcome }: RouteCaptureRequest,
+): Promise<RouteCaptureExecutionResult> {
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          const route = await tx.route.findUnique({ where: { id: routeId }, select: { id: true } });
+          if (!route) return { kind: 'not-found' as const };
+
+          const existing = await tx.encounter.findMany({
+            where: { routeId },
+            include: encounterAdminInclude,
+            orderBy: { id: 'asc' },
+          });
+          const report = auditEncounterLinkGroup(existing.map(toConsistencyInput));
+          if (!report.consistent) {
+            return {
+              kind: 'inconsistent' as const,
+              issueCodes: report.issues.map((issue) => issue.code),
+            };
+          }
+          if (report.status !== 'active' && report.status !== 'empty') {
+            return { kind: 'inactive' as const };
+          }
+
+          const duplicate = existing.find((encounter) =>
+            catches.some((entry) => entry.playerId === encounter.playerId),
+          );
+          if (duplicate) {
+            return { kind: 'duplicate' as const, playerName: duplicate.player.name };
+          }
+
+          // Das Schema hat kein Active-Flag. Daher ist die aktuelle Player-
+          // Tabelle die verbindliche aktive Spielerliste.
+          const activePlayers = await tx.player.findMany({ select: { id: true } });
+          const activePlayerIds = new Set(activePlayers.map((player) => player.id));
+          if (catches.some((entry) => !activePlayerIds.has(entry.playerId))) {
+            return { kind: 'invalid-player' as const };
+          }
+
+          const linkedPlayerIds = new Set([
+            ...existing.map((encounter) => encounter.playerId),
+            ...catches.map((entry) => entry.playerId),
+          ]);
+          const wasInTeam = report.teamSlot !== null;
+          const isComplete = activePlayers.every((player) => linkedPlayerIds.has(player.id));
+          if ((outcome.type === 'team' || wasInTeam) && !isComplete) {
+            return {
+              kind: 'incomplete' as const,
+              linkedCount: linkedPlayerIds.size,
+              activeCount: activePlayerIds.size,
+            };
+          }
+
+          if (outcome.type === 'team') {
+            const occupied = await tx.encounter.findFirst({
+              where: { teamSlot: outcome.teamSlot, routeId: { not: routeId } },
+              select: { routeId: true, route: { select: { name: true } } },
+            });
+            if (occupied) {
+              return {
+                kind: 'slot-conflict' as const,
+                routeId: occupied.routeId,
+                routeName: occupied.route.name,
+                teamSlot: outcome.teamSlot,
+              };
+            }
+          }
+
+          await tx.encounter.createMany({
+            data: catches.map((entry) => ({ ...entry, routeId, teamSlot: report.teamSlot })),
+          });
+          if (outcome.type === 'team') {
+            await tx.encounter.updateMany({
+              where: { routeId },
+              data: buildEncounterLinkUpdate({ action: 'set-team-slot', teamSlot: outcome.teamSlot }),
+            });
+          }
+          if (outcome.type === 'not-caught') {
+            await tx.encounter.updateMany({
+              where: { routeId },
+              data: buildEncounterLinkUpdate({
+                action: 'not-caught',
+                causedBy: outcome.causedBy,
+                reason: outcome.reason,
+              }),
+            });
+          }
+
+          const encounters = await tx.encounter.findMany({
+            where: { routeId },
+            include: encounterAdminInclude,
+            orderBy: { id: 'asc' },
+          });
+          await bumpLiveRevisions(tx, ['encounters']);
+          return { kind: 'captured' as const, encounters, wasInTeam };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      switch (result.kind) {
+        case 'not-found':
+          return { ok: false, status: 404, error: 'Route nicht gefunden' };
+        case 'inconsistent':
+          return {
+            ok: false,
+            status: 409,
+            error: `Route ist inkonsistent (${result.issueCodes.join(', ')}). Es wurde nichts gespeichert.`,
+          };
+        case 'inactive':
+          return {
+            ok: false,
+            status: 409,
+            error: 'K.O. oder nicht gefangene Routen müssen zuerst reaktiviert werden',
+          };
+        case 'duplicate':
+          return {
+            ok: false,
+            status: 409,
+            error: `${result.playerName} hat auf dieser Route bereits ein Pokémon erfasst. Es wurde nichts gespeichert.`,
+          };
+        case 'invalid-player':
+          return { ok: false, status: 400, error: 'Ungültige Spieler-ID' };
+        case 'incomplete':
+          return {
+            ok: false,
+            status: 409,
+            error: `Teamaufnahme blockiert: Die Route enthält ${result.linkedCount} von ${result.activeCount} aktiven Spielern.`,
+          };
+        case 'slot-conflict':
+          return teamSlotConflict(result.routeId, result.routeName, result.teamSlot);
+      }
+
+      if (outcome.type === 'team' && !result.wasInTeam) {
+        emitTeamLinkAdded(result.encounters, outcome.teamSlot);
+      }
+      if (outcome.type === 'not-caught') {
+        emitInactiveLinkEvent('pokemon_not_caught', result.encounters, outcome.causedBy);
+      }
+
+      return {
+        ok: true,
+        response: {
+          success: true,
+          routeId,
+          outcome: outcome.type,
+          created: catches.length,
+          encounters: result.encounters.map(serializeEncounterAdminTarget),
+        },
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2034' && attempt < maxRetries) continue;
+        if (error.code === 'P2034' || error.code === 'P2002') {
+          return {
+            ok: false,
+            status: 409,
+            error: 'Parallele Änderung erkannt. Bitte erneut versuchen.',
+          };
+        }
+        if (error.code === 'P2003') {
+          return { ok: false, status: 400, error: 'Ungültige Pokémon-ID' };
+        }
+      }
+      throw error;
+    }
+  }
+
+  return { ok: false, status: 409, error: 'Parallele Änderung erkannt. Bitte erneut versuchen.' };
 }
 
 /** Read-only consistency report. It never changes production data. */

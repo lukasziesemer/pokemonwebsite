@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import TeamDisplay from '@/components/TeamDisplay';
 import RouteList from '@/components/RouteList';
+import RouteCapturePanel from '@/components/admin/RouteCapturePanel';
 import PlayerAvatar from '@/components/PlayerAvatar';
 import AppPageTitle from '@/components/layout/AppPageTitle';
 import { PokemonDetailsProvider } from '@/components/pokemon-details';
@@ -305,13 +306,21 @@ export default function PokerouteClient({
               </button>
             </form>
           ) : null}
+          {isAdmin && players.length > 0 ? (
+            <RouteCapturePanel
+              routes={routes}
+              players={players}
+              pokemon={pokemon}
+              focusRouteId={createdRouteId}
+              onCaptured={reloadData}
+            />
+          ) : null}
           <RouteList
             routes={routes}
             players={players}
             isAdmin={isAdmin}
             gameVersionKey={currentGameVersion?.key ?? null}
             onTeamUpdate={reloadData}
-            focusRouteId={createdRouteId}
             pokemon={pokemon}
           />
         </div>

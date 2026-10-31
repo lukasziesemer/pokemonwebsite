@@ -88,7 +88,7 @@ for (const width of [390, 360]) {
       test('schneidet die Pokémon-Suche freier Slots nicht ab', async ({ page }) => {
         await openAdminRoutes(page);
 
-        const search = page.getByPlaceholder('Pokemon suchen...').first();
+        const search = page.locator('.route-list-row').getByPlaceholder('Pokemon suchen...').first();
         test.skip((await search.count()) === 0, 'Der aktuelle Spielstand enthält keinen freien Slot.');
 
         await search.fill('a');

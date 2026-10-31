@@ -32,6 +32,34 @@ export type EncounterLinkAdminValidationResult =
   | { ok: true; action: EncounterLinkAdminAction }
   | { ok: false; error: string };
 
+export interface RouteCaptureCatch {
+  playerId: number;
+  pokemonId: number;
+  nickname: string | null;
+}
+
+export type RouteCaptureOutcome =
+  | { type: 'box' }
+  | { type: 'team'; teamSlot: number }
+  | { type: 'not-caught'; causedBy: string; reason: string | null };
+
+export interface RouteCaptureRequest {
+  catches: RouteCaptureCatch[];
+  outcome: RouteCaptureOutcome;
+}
+
+export interface RouteCaptureResponse {
+  success: true;
+  routeId: number;
+  outcome: RouteCaptureOutcome['type'];
+  created: number;
+  encounters: EncounterAdminTarget[];
+}
+
+export type RouteCaptureValidationResult =
+  | { ok: true; capture: RouteCaptureRequest }
+  | { ok: false; error: string };
+
 export interface EncounterLinkUpdateData {
   teamSlot?: number | null;
   isKnockedOut?: boolean;
@@ -107,6 +135,7 @@ export interface EncounterLinkAuditResponse {
 
 const MAX_CAUSED_BY_LENGTH = 80;
 const MAX_REASON_LENGTH = 240;
+const MAX_NICKNAME_LENGTH = 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -143,6 +172,66 @@ function optionalText(value: unknown, label: string, maxLength: number) {
   return { ok: true as const, value: normalized || null };
 }
 
+function isTeamSlot(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 6;
+}
+
+function isPositiveId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function parseRouteCaptureOutcome(value: unknown) {
+  if (!isRecord(value)) {
+    return { ok: false as const, error: 'Ein gültiges Fangergebnis ist erforderlich' };
+  }
+
+  switch (value.type) {
+    case 'box':
+      return { ok: true as const, outcome: { type: 'box' as const } };
+    case 'team':
+      if (!isTeamSlot(value.teamSlot)) {
+        return { ok: false as const, error: 'Teamplatz muss zwischen 1 und 6 liegen' };
+      }
+      return { ok: true as const, outcome: { type: 'team' as const, teamSlot: value.teamSlot } };
+    case 'not-caught': {
+      const causedBy = requiredText(value.causedBy, 'Verursacher', MAX_CAUSED_BY_LENGTH);
+      if (!causedBy.ok) return causedBy;
+      const reason = optionalText(value.reason, 'Grund', MAX_REASON_LENGTH);
+      if (!reason.ok) return reason;
+      return {
+        ok: true as const,
+        outcome: { type: 'not-caught' as const, causedBy: causedBy.value, reason: reason.value },
+      };
+    }
+    default:
+      return { ok: false as const, error: 'Ein gültiges Fangergebnis ist erforderlich' };
+  }
+}
+
+export function parseRouteCapture(value: unknown): RouteCaptureValidationResult {
+  if (!isRecord(value) || !Array.isArray(value.catches) || value.catches.length === 0) {
+    return { ok: false, error: 'Mindestens ein Pokémon ist erforderlich' };
+  }
+
+  const catches: RouteCaptureCatch[] = [];
+  for (const entry of value.catches) {
+    if (!isRecord(entry) || !isPositiveId(entry.playerId) || !isPositiveId(entry.pokemonId)) {
+      return { ok: false, error: 'Jeder Fang braucht eine gültige Spieler- und Pokémon-ID' };
+    }
+    if (catches.some((existing) => existing.playerId === entry.playerId)) {
+      return { ok: false, error: 'Jeder Spieler darf nur 1 Pokémon pro Route fangen' };
+    }
+    const nickname = optionalText(entry.nickname, 'Spitzname', MAX_NICKNAME_LENGTH);
+    if (!nickname.ok) return nickname;
+    catches.push({ playerId: entry.playerId, pokemonId: entry.pokemonId, nickname: nickname.value });
+  }
+
+  const outcome = parseRouteCaptureOutcome(value.outcome);
+  if (!outcome.ok) return outcome;
+
+  return { ok: true, capture: { catches, outcome: outcome.outcome } };
+}
+
 export function parseEncounterLinkAdminAction(
   value: unknown,
 ): EncounterLinkAdminValidationResult {
@@ -152,13 +241,7 @@ export function parseEncounterLinkAdminAction(
 
   switch (value.action) {
     case 'set-team-slot':
-      if (
-        value.teamSlot !== null &&
-        (typeof value.teamSlot !== 'number' ||
-          !Number.isInteger(value.teamSlot) ||
-          value.teamSlot < 1 ||
-          value.teamSlot > 6)
-      ) {
+      if (value.teamSlot !== null && !isTeamSlot(value.teamSlot)) {
         return { ok: false, error: 'Teamplatz muss zwischen 1 und 6 liegen oder null sein' };
       }
       return {
@@ -431,6 +514,26 @@ export async function mutateEncounterLink(
 
   if (!response.ok || !payload || !('encounters' in payload)) {
     throw new Error(payload && 'error' in payload ? payload.error : 'Link-Änderung fehlgeschlagen');
+  }
+  return payload;
+}
+
+export async function captureRoute(
+  routeId: number,
+  capture: RouteCaptureRequest,
+): Promise<RouteCaptureResponse> {
+  const response = await fetch(`${ENCOUNTER_LINK_ADMIN_ENDPOINT}/${routeId}/capture`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(capture),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | RouteCaptureResponse
+    | EncounterLinkAdminErrorResponse
+    | null;
+
+  if (!response.ok || !payload || !('encounters' in payload)) {
+    throw new Error(payload && 'error' in payload ? payload.error : 'Fang konnte nicht gespeichert werden');
   }
   return payload;
 }

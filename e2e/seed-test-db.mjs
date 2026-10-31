@@ -23,6 +23,8 @@ const POKEMON = [
 const ROUTES = [
   ['Route 19', [1, 4], 1],
   ['Route 20', [5, 2], 2],
+  // Spieler Blau fehlt: offene Route für die Fang-Erfassung.
+  ['Route 21', [2], null],
   ['Route 4', [4, 1], null],
 ];
 
