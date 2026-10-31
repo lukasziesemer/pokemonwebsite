@@ -47,6 +47,7 @@ const damageClassLabels: Record<string, string> = {
   physical: 'Physisch',
   special: 'Spezial',
   status: 'Status',
+  variable: 'Typabhängig',
 };
 
 function MoveRows({ moves }: { moves: LevelUpMove[] }) {
@@ -71,7 +72,7 @@ function MoveRows({ moves }: { moves: LevelUpMove[] }) {
         <tbody>
           {moves.map((move, index) => (
             <tr key={`${move.name}-${move.level}-${move.order}-${index}`}>
-              <td><strong>{move.level === 0 ? 'Start' : move.level}</strong></td>
+              <td><strong>{move.level}</strong></td>
               <th scope="row">{move.displayName}</th>
               <td>
                 <span
@@ -342,6 +343,11 @@ export default function PokemonDetailsDialog({
                   <span>03</span>
                   <h3 id={`${titleId}-evolution`}>Entwicklungen</h3>
                 </div>
+                {details.evolution.editionScope?.note ? (
+                  <p className="mb-4 text-sm leading-6 text-[var(--text-secondary)]">
+                    {details.evolution.editionScope.note}
+                  </p>
+                ) : null}
                 <EvolutionRows
                   nodes={details.evolution.nodes}
                   edges={details.evolution.edges}

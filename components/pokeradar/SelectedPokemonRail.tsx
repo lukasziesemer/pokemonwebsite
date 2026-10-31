@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { PokemonDetailsTrigger } from '@/components/pokemon-details/PokemonDetailsProvider';
 import SelectionStatusBadge from '@/components/pokeradar/SelectionStatusBadge';
 import TypeBadge from '@/components/ui/TypeBadge';
 import { useSpriteMode } from '@/lib/contexts/SpriteContext';
@@ -8,8 +9,7 @@ import { getSpriteUrl } from '@/lib/sprite-utils';
 import { getGermanTypeName, parseTypes } from '@/lib/typeEffectiveness';
 import type { ComparisonSelectionStatus } from '@/lib/pokemon-comparison';
 import type { Pokemon } from '@/lib/types';
-
-const DEFAULT_COLORS = ['#dc2626', '#2563eb', '#059669', '#b45309', '#c026d3', '#0891b2'];
+import { getSeriesColor, SeriesMarker } from './comparison-ui';
 
 export interface SelectedPokemonRailProps {
   selected: Pokemon[];
@@ -20,6 +20,7 @@ export interface SelectedPokemonRailProps {
   statuses?: readonly ComparisonSelectionStatus[];
   colors?: readonly string[];
   maxCount?: number;
+  detailsEnabled?: boolean;
 }
 
 function SpriteFallback() {
@@ -46,8 +47,9 @@ export default function SelectedPokemonRail({
   onRemove,
   onOpenPicker,
   statuses = [],
-  colors = DEFAULT_COLORS,
+  colors,
   maxCount = 6,
+  detailsEnabled = true,
 }: SelectedPokemonRailProps) {
   const { spriteMode } = useSpriteMode();
   const slots = Array.from({ length: maxCount }, (_, index) => selected[index] ?? null);
@@ -60,7 +62,7 @@ export default function SelectedPokemonRail({
             Vergleichsteam
           </h2>
           <p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-            Bis zu {maxCount} Pokémon · Klick wählt die Referenz
+            Bis zu {maxCount} Pokémon · Kachel öffnet Details · Referenz separat wählen
           </p>
         </div>
         <span
@@ -73,7 +75,7 @@ export default function SelectedPokemonRail({
 
       <ol className="no-scrollbar -mx-1 flex snap-x gap-0 overflow-x-auto px-1 pb-2 sm:grid sm:grid-cols-3 sm:overflow-visible xl:grid-cols-6">
         {slots.map((pokemon, index) => {
-          const color = colors[index % colors.length] ?? DEFAULT_COLORS[index % DEFAULT_COLORS.length];
+          const color = getSeriesColor(index, colors);
 
           if (!pokemon) {
             return (
@@ -81,7 +83,7 @@ export default function SelectedPokemonRail({
                 <button
                   type="button"
                   onClick={onOpenPicker}
-                  className="group flex min-h-44 w-full flex-col items-center justify-center border border-dashed border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-4 text-center transition hover:border-red-600 hover:bg-red-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                  className="group flex h-full min-h-44 w-full flex-col items-center justify-center border border-dashed border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-4 text-center transition hover:border-red-600 hover:bg-red-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
                   aria-label={`Pokémon für Platz ${index + 1} auswählen`}
                 >
                   <span className="flex h-11 w-11 items-center justify-center border border-[var(--border-default)] bg-[var(--card-bg)] text-2xl text-[var(--text-secondary)] transition group-hover:border-red-600 group-hover:text-red-600" aria-hidden="true">
@@ -103,7 +105,7 @@ export default function SelectedPokemonRail({
           return (
             <li key={pokemon.pokedexId} className="relative w-[9.5rem] shrink-0 snap-start sm:w-auto">
               <div
-                className={`relative min-h-44 overflow-hidden border border-t-2 bg-[var(--card-bg)] transition ${
+                className={`relative flex h-full min-h-44 flex-col overflow-hidden border border-t-2 bg-[var(--card-bg)] transition ${
                   isReference
                     ? 'border-red-600 bg-red-500/[0.03]'
                     : 'border-[var(--border-default)] hover:border-[var(--text-tertiary)]'
@@ -122,20 +124,13 @@ export default function SelectedPokemonRail({
                   </svg>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => onSetReference(pokemon.pokedexId)}
-                  aria-pressed={isReference}
-                  aria-label={`${displayName} ${isReference ? 'ist die Referenz' : 'als Referenz festlegen'}`}
-                  className="flex min-h-44 w-full flex-col items-center px-3 pb-3 pt-2 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600"
+                <PokemonDetailsTrigger
+                  pokemon={{ ...pokemon, types }}
+                  disabled={!detailsEnabled}
+                  title={detailsEnabled ? 'Basiswerte, Attacken und Entwicklungen öffnen' : 'Edition des aktuellen Runs wird geladen'}
+                  className="flex min-h-44 w-full flex-1 flex-col items-center px-3 pb-2 pt-2 text-center transition hover:bg-[var(--background-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-600 disabled:cursor-wait"
                 >
-                  <span
-                    className="flex h-7 min-w-7 items-center justify-center rounded-[2px] border-2 bg-[var(--background-secondary)] px-2 text-xs font-black text-[var(--foreground)]"
-                    style={{ borderColor: color }}
-                    aria-hidden="true"
-                  >
-                    {index + 1}
-                  </span>
+                  <SeriesMarker index={index} colors={colors} />
 
                   <span className="mt-1 flex h-14 items-center justify-center">
                     {spriteUrl ? (
@@ -178,16 +173,22 @@ export default function SelectedPokemonRail({
                     ) : null}
                   </span>
 
-                  <span
-                    className={`mt-1 inline-flex min-h-6 items-center px-2 text-[11px] font-black uppercase tracking-wide ${
+                </PokemonDetailsTrigger>
+                <div className="px-2 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => onSetReference(pokemon.pokedexId)}
+                    aria-pressed={isReference}
+                    aria-label={`${displayName} ${isReference ? 'ist die Referenz' : 'als Referenz festlegen'}`}
+                    className={`inline-flex min-h-11 w-full items-center justify-center px-1 text-[10px] font-black uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 ${
                       isReference
                         ? 'bg-red-600 text-white'
                         : 'bg-[var(--background-tertiary)] text-[var(--text-secondary)]'
                     }`}
                   >
                     {isReference ? '★ Referenz' : 'Als Referenz'}
-                  </span>
-                </button>
+                  </button>
+                </div>
               </div>
             </li>
           );

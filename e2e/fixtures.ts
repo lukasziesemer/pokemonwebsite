@@ -124,6 +124,9 @@ export async function installPokeradarMocks(page: Page) {
   await page.route('**/api/auth/status', (route) => json(route, { isAdmin: false }));
   await page.route('**/api/pokemon', (route) => json(route, { pokemon: POKEMON }));
   await page.route('**/api/pokeradar/teams', (route) => json(route, TEAM_RESPONSE));
+  await page.route('**/api/pokeradar/context', (route) => json(route, {
+    gameVersionKey: 'black2', gameVersionName: 'Pokémon Schwarz 2', levelCap: 18, runId: 11,
+  }));
 }
 
 const BLUE = { key: 'red-blue', name: 'Pokémon Blau', generation: 1 };

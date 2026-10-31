@@ -34,7 +34,7 @@ test.describe('Pokeradar-Kernabläufe', () => {
       }),
     ).toBe('Starterteam');
 
-    await page.getByRole('button', { name: 'Schiggy aus dem Vergleich entfernen' }).click();
+    await page.locator('section[aria-labelledby="selected-pokemon-heading"]').getByRole('button', { name: 'Schiggy aus dem Vergleich entfernen' }).click();
     await expect.poll(() => queryValue(page.url(), 'pokemon')).toBe('4');
     await page.getByRole('button', { name: 'Bisasam zur Auswahl hinzufügen' }).click();
     await expect.poll(() => queryValue(page.url(), 'pokemon')).toBe('4,1');

@@ -47,6 +47,14 @@ describe('GET /api/pokemon/[pokedexId]/details', () => {
       new NextRequest('http://localhost/api/pokemon/25/details'),
       { params: Promise.resolve({ pokedexId: '25' }) },
     );
+    expect(mocks.getPokemonDetails).toHaveBeenCalledWith(25, { gameVersionKey: undefined });
+  });
+
+  it('keeps an explicitly unassigned edition separate from the implicit current run', async () => {
+    await GET(
+      new NextRequest('http://localhost/api/pokemon/25/details?gameVersion=none'),
+      { params: Promise.resolve({ pokedexId: '25' }) },
+    );
     expect(mocks.getPokemonDetails).toHaveBeenCalledWith(25, { gameVersionKey: null });
   });
 });

@@ -17,7 +17,7 @@ export function GameFilter({ games, selectedGame, onSelect }: GameFilterProps) {
   ];
 
   return (
-    <div className="-mx-4 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+    <div className="-mx-3 overflow-x-auto px-3 pb-1 no-scrollbar md:mx-0 md:px-0">
       <div className="app-toolbar flex min-w-max gap-0 border border-[var(--border-default)]" role="group" aria-label="Statistik nach Spiel filtern">
         {options.map((option) => {
           const selected = selectedGame === option.key;

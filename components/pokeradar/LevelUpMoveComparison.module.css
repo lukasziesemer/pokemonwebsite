@@ -1,0 +1,198 @@
+.section {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.heading {
+  margin: 0;
+}
+
+.toggle {
+  display: flex;
+  width: 100%;
+  min-height: 4.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  text-align: left;
+}
+
+.toggle:hover {
+  background: var(--background-secondary);
+}
+
+.toggle:focus-visible,
+.scroll:focus-visible {
+  outline: 2px solid var(--accent, #ef4444);
+  outline-offset: -2px;
+}
+
+.body {
+  min-width: 0;
+  border-top: 1px solid var(--border-default);
+  padding: 1rem 1.25rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .75rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.check {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: .5rem;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.check:has(input:disabled) {
+  color: var(--text-tertiary);
+}
+
+.check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent, #ef4444);
+}
+
+.typeFilter {
+  display: grid;
+  gap: .25rem;
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.typeFilter select {
+  min-height: 2.75rem;
+  min-width: 9rem;
+  border: 1px solid var(--border-default);
+  background: var(--background-secondary);
+  padding: .5rem .75rem;
+  color: var(--foreground);
+}
+
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: .8125rem;
+}
+
+.table th,
+.table td {
+  border-right: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  padding: .625rem .75rem;
+  vertical-align: middle;
+}
+
+.table th {
+  text-align: left;
+}
+
+.table thead th {
+  background: var(--background-secondary);
+}
+
+.table th:last-child,
+.table td:last-child {
+  border-right: 0;
+}
+
+.table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.table .moveColumn {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  width: 12rem;
+  min-width: 12rem;
+  max-width: 12rem;
+  background: var(--card-bg);
+  box-shadow: 1px 0 var(--border-default);
+  overflow-wrap: anywhere;
+}
+
+.table thead .moveColumn {
+  background: var(--background-secondary);
+}
+
+.pokemonColumn {
+  min-width: 10rem;
+  border-top: 3px solid var(--comparison-color);
+}
+
+.pokemonIdentity {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem .5rem;
+  margin-top: .25rem;
+  font-size: .6875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.levels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.level {
+  border-left: 2px solid var(--comparison-color);
+  padding: .125rem .375rem;
+  background: var(--background-secondary);
+}
+
+.laterLevel {
+  color: var(--text-tertiary);
+  border-left-color: var(--border-default);
+  font-weight: 400;
+}
+
+@media (max-width: 639px) {
+  .body,
+  .toggle {
+    padding: 1rem .75rem;
+  }
+
+  .table .moveColumn {
+    width: 8.5rem;
+    min-width: 8.5rem;
+    max-width: 8.5rem;
+  }
+
+  .pokemonColumn {
+    min-width: 9rem;
+  }
+
+  .table th,
+  .table td {
+    padding: .5rem;
+  }
+}
