@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import AppPageTitle from '@/components/layout/AppPageTitle';
+import { PokemonDetailsProvider } from '@/components/pokemon-details/PokemonDetailsProvider';
 import ComparisonInsights from '@/components/pokeradar/ComparisonInsights';
 import BaseStatsComparison from '@/components/pokeradar/BaseStatsComparison';
 import PokemonPicker from '@/components/pokeradar/PokemonPicker';
@@ -15,6 +16,8 @@ import TeamSourcePicker, {
   type AppliedTeamPokemon,
 } from '@/components/pokeradar/TeamSourcePicker';
 import TypeComparison from '@/components/pokeradar/TypeComparison';
+import LevelUpMoveComparison from '@/components/pokeradar/LevelUpMoveComparison';
+import EvolutionComparison from '@/components/pokeradar/EvolutionComparison';
 import type { SavedComparisonSetV2 } from '@/components/pokeradar/team-comparison-types';
 import { fetchJson } from '@/lib/fetchJson';
 import { useLiveRefresh } from '@/lib/hooks/useLiveRefresh';
@@ -32,11 +35,13 @@ import type {
   PokeradarTeamsResponse,
 } from '@/lib/pokeradar-team-data';
 import type { Pokemon } from '@/lib/types';
+import type { ComparisonRunContext } from '@/lib/pokeradar-context';
 
 type LoadedPokemon = Pokemon & { id: number };
 
 const COMPARISON_POKEMON_TOPICS = ['pokemon'] as const;
 const COMPARISON_TEAM_TOPICS = ['encounters', 'players'] as const;
+const COMPARISON_RUN_TOPICS = ['runs'] as const;
 
 export default function PokeradarClient() {
   const router = useRouter();
@@ -52,6 +57,23 @@ export default function PokeradarClient() {
   const [teamSourcesError, setTeamSourcesError] = useState<string | null>(null);
   const [pokemonReloadToken, setPokemonReloadToken] = useState(0);
   const [teamReloadToken, setTeamReloadToken] = useState(0);
+  const [runContext, setRunContext] = useState<ComparisonRunContext | null>(null);
+  const [runContextError, setRunContextError] = useState(false);
+  const [contextReloadToken, setContextReloadToken] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchJson<ComparisonRunContext>('/api/pokeradar/context', { signal: controller.signal })
+      .then(context => {
+        if (controller.signal.aborted) return;
+        setRunContext(context);
+        setRunContextError(false);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRunContextError(true);
+      });
+    return () => controller.abort();
+  }, [contextReloadToken]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -96,9 +118,15 @@ export default function PokeradarClient() {
   const reloadTeams = useCallback(() => {
     setTeamReloadToken((token) => token + 1);
   }, []);
+  const reloadContext = useCallback(() => {
+    setContextReloadToken(token => token + 1);
+  }, []);
 
   useLiveRefresh(COMPARISON_POKEMON_TOPICS, reloadPokemon);
   useLiveRefresh(COMPARISON_TEAM_TOPICS, reloadTeams);
+  useLiveRefresh(COMPARISON_RUN_TOPICS, reloadContext);
+
+  const availablePokemonIds = useMemo(() => allPokemon.map(pokemon => pokemon.pokedexId), [allPokemon]);
 
   const comparisonState = useMemo(
     () => normalizeComparisonState(
@@ -156,6 +184,11 @@ export default function PokeradarClient() {
     if (selectedPokemon.length >= 6 || selectedPokemon.some((entry) => entry.pokedexId === pokemon.pokedexId)) return;
     changeSelection([...selectedPokemon, pokemon]);
   }, [changeSelection, selectedPokemon]);
+
+  const addEvolutionToComparison = useCallback((pokedexId: number) => {
+    const pokemon = allPokemon.find(entry => entry.pokedexId === pokedexId);
+    if (pokemon) addPokemon(pokemon);
+  }, [addPokemon, allPokemon]);
 
   const removePokemon = useCallback((pokedexId: number) => {
     changeSelection(selectedPokemon.filter((pokemon) => pokemon.pokedexId !== pokedexId));
@@ -282,12 +315,17 @@ export default function PokeradarClient() {
   }
 
   return (
+    <PokemonDetailsProvider
+      key={runContextError ? 'context-error' : `${runContext?.runId ?? 'none'}:${runContext?.gameVersionKey ?? 'none'}`}
+      gameVersionKey={runContext?.gameVersionKey ?? null}
+      gameVersionName={runContext?.gameVersionName}
+    >
     <div className="app-page">
       <header className="app-page-header mb-5">
         <AppPageTitle
           index="03"
           title="Vergleich"
-          description="Basiswerte, Profile und Typen direkt gegenüberstellen."
+          description="Basiswerte, Attacken, Entwicklungen und Typen direkt gegenüberstellen."
         />
         <button
           type="button"
@@ -302,6 +340,20 @@ export default function PokeradarClient() {
         </button>
         <p className="sr-only" role="status" aria-live="polite">{shareStatus}</p>
       </header>
+
+      <div className="app-toolbar mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" aria-live="polite">
+        {runContextError ? (
+          <>
+            <p role="alert">Die Edition des aktuellen Runs konnte nicht geladen werden. Editionsabhängige Details bleiben gesperrt.</p>
+            <button type="button" onClick={reloadContext} className="app-action min-h-11">Edition erneut laden</button>
+          </>
+        ) : runContext ? (
+          <>
+            <span>Edition des aktuellen Runs: <strong>{runContext.gameVersionName ?? 'Nicht festgelegt'}</strong></span>
+            <span className="text-[var(--text-secondary)]">{runContext.levelCap !== null ? `Level-Cap: ${runContext.levelCap}` : 'Kein Level-Cap hinterlegt'}</span>
+          </>
+        ) : <p role="status">Edition des aktuellen Runs wird geladen …</p>}
+      </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_21rem]">
         <main className="min-w-0 space-y-5">
@@ -323,6 +375,7 @@ export default function PokeradarClient() {
               onRemove={removePokemon}
               onOpenPicker={() => setPickerOpen(true)}
               statuses={comparisonState.statuses}
+              detailsEnabled={Boolean(runContext) && !runContextError}
             />
 
             <div className="app-toolbar mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--border-default)] pt-4 xl:justify-end">
@@ -408,6 +461,9 @@ export default function PokeradarClient() {
               reference={referencePokemon}
               activeMetric={comparisonState.metric}
               onMetricChange={setMetric}
+              runContext={runContextError ? null : runContext}
+              availablePokemonIds={availablePokemonIds}
+              onAddPokemon={addEvolutionToComparison}
             />
           )}
         </main>
@@ -423,6 +479,7 @@ export default function PokeradarClient() {
         />
       </div>
     </div>
+    </PokemonDetailsProvider>
   );
 }
 
@@ -431,11 +488,17 @@ function ComparisonSections({
   reference,
   activeMetric,
   onMetricChange,
+  runContext,
+  availablePokemonIds,
+  onAddPokemon,
 }: {
   pokemon: Pokemon[];
   reference: Pokemon | null;
   activeMetric: ComparisonMetric;
   onMetricChange: (metric: ComparisonMetric) => void;
+  runContext: ComparisonRunContext | null;
+  availablePokemonIds: number[];
+  onAddPokemon: (pokedexId: number) => void;
 }) {
   return (
     <>
@@ -446,6 +509,23 @@ function ComparisonSections({
         onMetricChange={onMetricChange}
       />
       <PokemonProfileComparison pokemon={pokemon} />
+      {runContext ? (
+        <>
+          <LevelUpMoveComparison
+            pokemon={pokemon}
+            gameVersionKey={runContext.gameVersionKey}
+            gameVersionName={runContext.gameVersionName}
+            levelCap={runContext.levelCap}
+          />
+          <EvolutionComparison
+            pokemon={pokemon}
+            gameVersionKey={runContext.gameVersionKey}
+            gameVersionName={runContext.gameVersionName}
+            availablePokemonIds={availablePokemonIds}
+            onAddPokemon={onAddPokemon}
+          />
+        </>
+      ) : null}
       <TypeComparison pokemon={pokemon} />
       <RadarProfileDisclosure pokemon={pokemon} />
     </>
