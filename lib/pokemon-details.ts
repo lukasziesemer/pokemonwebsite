@@ -46,6 +46,7 @@ export interface EvolutionNode {
   displayName: string;
   spriteUrl: string | null;
   spriteGifUrl: string | null;
+  generation?: number;
 }
 
 export interface EvolutionCondition {
@@ -68,6 +69,9 @@ export interface EvolutionCondition {
   partySpecies?: string;
   partyType?: string;
   tradeSpecies?: string;
+  introducedVersionGroup?: string;
+  basePokedexId?: number;
+  evolvedPokedexId?: number;
 }
 
 export interface EvolutionEdge {
@@ -79,6 +83,12 @@ export interface EvolutionEdge {
 export interface PokemonEvolutionDetails {
   nodes: EvolutionNode[];
   edges: EvolutionEdge[];
+  editionScope?: {
+    generation: number | null;
+    excludedPokemonCount: number;
+    conditionsVerified: boolean;
+    note: string;
+  };
 }
 
 export interface PokemonDetailsCacheInfo {

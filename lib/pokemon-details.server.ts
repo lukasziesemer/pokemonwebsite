@@ -10,10 +10,12 @@ import type {
 } from './pokemon-details';
 import { getCurrentGameVersion } from './current-game';
 import { getKnownGameVersion } from './game-versions';
+import { scopeEvolutionToEdition } from './pokemon-evolution-comparison';
+import { resolveMoveMetadata, type PokeApiMoveMetadata } from './pokemon-move-metadata';
 import prisma from './prisma';
 
 const POKEAPI_BASE_URL = 'https://pokeapi.co/api/v2';
-const CACHE_SCHEMA_VERSION = 1;
+const CACHE_SCHEMA_VERSION = 3;
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const NO_EDITION_CACHE_KEY = '__no-edition__';
 
@@ -48,19 +50,23 @@ interface PokeApiPokemon {
 interface PokeApiSpecies {
   names: Array<{ name: string; language: NamedResource }>;
   evolution_chain: { url: string } | null;
+  generation?: NamedResource;
 }
 
-interface PokeApiMove {
-  name: string;
+interface PokeApiMove extends PokeApiMoveMetadata {
   names: Array<{ name: string; language: NamedResource }>;
-  type: NamedResource;
-  damage_class: NamedResource;
-  power: number | null;
-  accuracy: number | null;
-  pp: number | null;
 }
 
 interface PokeApiEvolutionDetail {
+  version_group?: NamedResource | null;
+  base_form?: NamedResource | null;
+  evolved_form?: NamedResource | null;
+  near_special_rock?: boolean;
+  needs_multiplayer?: boolean;
+  used_move?: NamedResource | null;
+  min_move_count?: number | null;
+  min_steps?: number | null;
+  min_damage_taken?: number | null;
   trigger: NamedResource;
   item: NamedResource | null;
   held_item: NamedResource | null;
@@ -165,6 +171,13 @@ function germanName(names: PokeApiSpecies['names'] | PokeApiMove['names']): stri
 }
 
 function slugLabel(value: string): string {
+  const itemNames: Record<string, string> = {
+    'water-stone': 'Wasserstein', 'fire-stone': 'Feuerstein', 'thunder-stone': 'Donnerstein',
+    'leaf-stone': 'Blattstein', 'ice-stone': 'Eisstein', 'moon-stone': 'Mondstein',
+    'sun-stone': 'Sonnenstein', 'shiny-stone': 'Leuchtstein', 'dusk-stone': 'Finsterstein',
+    'dawn-stone': 'Funkelstein', 'linking-cord': 'Verbindungsschnur',
+  };
+  if (itemNames[value]) return itemNames[value];
   return value
     .split('-')
     .filter(Boolean)
@@ -228,14 +241,24 @@ export function selectLevelUpMoveEntries(
 
 async function buildLevelUpMoves(
   pokemon: PokeApiPokemon,
-  versionGroupSlug: string,
+  edition: PokemonEditionInfo,
 ): Promise<LevelUpMove[]> {
-  const entries = selectLevelUpMoveEntries(pokemon, versionGroupSlug);
+  const entries = selectLevelUpMoveEntries(pokemon, edition.versionGroupSlug);
   const resources = [...new Map(entries.map((entry) => [entry.move.name, entry.move])).values()];
   const details = await mapWithConcurrency(resources, 6, (move) =>
     fetchPokeApi<PokeApiMove>(move.url),
   );
   const detailByName = new Map(details.map((move) => [move.name, move]));
+  const historyGroups = new Set(details.flatMap(move => (
+    move.past_values?.map(change => change.version_group.name) ?? []
+  )));
+  if (historyGroups.size > 0) historyGroups.add(edition.versionGroupSlug);
+  const groupOrders = Object.fromEntries(await mapWithConcurrency([...historyGroups], 4, async slug => {
+    const group = await fetchPokeApi<{ order: number }>(`version-group/${slug}`);
+    return [slug, group.order] as const;
+  }));
+  const generation = getKnownGameVersion(edition.key)?.generation;
+  if (!generation) throw new Error('Generation für editionsspezifische Attacken fehlt.');
 
   return entries.map((entry) => {
     const move = detailByName.get(entry.move.name);
@@ -247,11 +270,7 @@ async function buildLevelUpMoves(
       displayName: nameGerman ?? slugLabel(move.name),
       level: entry.level,
       order: entry.order,
-      type: move.type.name,
-      damageClass: move.damage_class.name,
-      power: move.power,
-      accuracy: move.accuracy,
-      pp: move.pp,
+      ...resolveMoveMetadata(move, { versionGroupSlug: edition.versionGroupSlug, generation }, groupOrders),
     };
   });
 }
@@ -271,13 +290,19 @@ export function formatEvolutionCondition(detail: PokeApiEvolutionDetail): Evolut
   if (trigger === 'trade') parts.push(tradeSpecies ? `Tausch gegen ${slugLabel(tradeSpecies)}` : 'Tausch');
   else if (trigger === 'use-item') parts.push(item ? `Mit ${slugLabel(item)}` : 'Item verwenden');
   else if (trigger === 'shed') parts.push('Freier Teamplatz und Pokéball');
-  else parts.push(detail.min_level !== null ? `Level ${detail.min_level}` : 'Levelaufstieg');
+  else if (trigger === 'level-up') parts.push(detail.min_level !== null ? `Level ${detail.min_level}` : 'Levelaufstieg');
+  else parts.push(`Sonderbedingung: ${slugLabel(trigger)}`);
 
   if (item && trigger !== 'use-item') parts.push(`mit ${slugLabel(item)}`);
   if (heldItem) parts.push(`hält ${slugLabel(heldItem)}`);
   if (knownMove) parts.push(`kennt ${slugLabel(knownMove)}`);
   if (knownMoveType) parts.push(`kennt Attacke vom Typ ${slugLabel(knownMoveType)}`);
   if (location) parts.push(`bei ${slugLabel(location)}`);
+  if (detail.near_special_rock) parts.push('am besonderen Felsen');
+  if (detail.needs_multiplayer) parts.push('im Mehrspielermodus');
+  if (detail.used_move) parts.push(`${slugLabel(detail.used_move.name)} einsetzen${detail.min_move_count ? ` (${detail.min_move_count}×)` : ''}`);
+  if (detail.min_steps) parts.push(`${detail.min_steps} Schritte`);
+  if (detail.min_damage_taken) parts.push(`${detail.min_damage_taken} Schaden erleiden`);
   if (detail.min_happiness !== null) parts.push(`Freundschaft ${detail.min_happiness}+`);
   if (detail.min_beauty !== null) parts.push(`Schönheit ${detail.min_beauty}+`);
   if (detail.min_affection !== null) parts.push(`Zutrauen ${detail.min_affection}+`);
@@ -311,6 +336,9 @@ export function formatEvolutionCondition(detail: PokeApiEvolutionDetail): Evolut
     ...(partySpecies ? { partySpecies } : {}),
     ...(partyType ? { partyType } : {}),
     ...(tradeSpecies ? { tradeSpecies } : {}),
+    ...(detail.version_group ? { introducedVersionGroup: detail.version_group.name } : {}),
+    ...(detail.base_form ? { basePokedexId: extractId(detail.base_form) } : {}),
+    ...(detail.evolved_form ? { evolvedPokedexId: extractId(detail.evolved_form) } : {}),
   };
 }
 
@@ -337,9 +365,10 @@ function collectEvolutionGraph(
 async function buildEvolutionDetails(
   currentPokemon: PokeApiPokemon,
   currentSpecies: PokeApiSpecies,
+  edition: PokemonEditionInfo | null,
 ): Promise<PokemonEvolutionDetails> {
   if (!currentSpecies.evolution_chain?.url) {
-    return {
+    return scopeEvolutionToEdition({
       nodes: [{
         pokedexId: currentPokemon.id,
         name: currentPokemon.name,
@@ -347,15 +376,33 @@ async function buildEvolutionDetails(
         displayName: germanName(currentSpecies.names) ?? slugLabel(currentPokemon.name),
         spriteUrl: currentPokemon.sprites.other?.['official-artwork']?.front_default ?? currentPokemon.sprites.front_default,
         spriteGifUrl: currentPokemon.sprites.other?.showdown?.front_default ?? null,
+        generation: currentSpecies.generation ? extractId(currentSpecies.generation) : undefined,
       }],
       edges: [],
-    };
+    }, currentPokemon.id, edition?.key ?? null, {});
   }
 
   const chain = await fetchPokeApi<PokeApiEvolutionChain>(currentSpecies.evolution_chain.url);
   const ids: number[] = [];
   const edges: EvolutionEdge[] = [];
   collectEvolutionGraph(chain.chain, ids, edges);
+
+  const groups = [...new Set([
+    ...(edition ? [edition.versionGroupSlug] : []),
+    ...edges.flatMap(edge => edge.conditions.flatMap(condition => condition.introducedVersionGroup ? [condition.introducedVersionGroup] : [])),
+  ])];
+  const loadGroupOrders = () => edition
+    ? mapWithConcurrency(groups, 4, async slug => {
+        try {
+          const group = await fetchPokeApi<{ order: number }>(`version-group/${slug}`);
+          return [slug, group.order] as const;
+        } catch {
+          // Version metadata is supplemental. Missing order suppresses uncertain
+          // methods below instead of taking down stats and the move list too.
+          return [slug, undefined] as const;
+        }
+      })
+    : Promise.resolve([]);
 
   const localPokemon = await prisma.pokemon.findMany({
     where: { pokedexId: { in: ids } },
@@ -369,12 +416,17 @@ async function buildEvolutionDetails(
   });
   const localById = new Map(localPokemon.map((pokemon) => [pokemon.pokedexId, pokemon]));
 
-  const nodes = await mapWithConcurrency(ids, 4, async (pokedexId): Promise<EvolutionNode> => {
+  const [nodes, groupOrderEntries] = await Promise.all([mapWithConcurrency(ids, 4, async (pokedexId): Promise<EvolutionNode> => {
+    const species = pokedexId === currentPokemon.id
+      ? currentSpecies
+      : await fetchPokeApi<PokeApiSpecies>(`pokemon-species/${pokedexId}`);
+    const generation = species.generation ? extractId(species.generation) : undefined;
     const local = localById.get(pokedexId);
     if (local) {
       return {
         ...local,
         displayName: local.nameGerman ?? slugLabel(local.name),
+        generation,
       };
     }
     if (pokedexId === currentPokemon.id) {
@@ -386,12 +438,10 @@ async function buildEvolutionDetails(
         displayName: nameGerman ?? slugLabel(currentPokemon.name),
         spriteUrl: currentPokemon.sprites.other?.['official-artwork']?.front_default ?? currentPokemon.sprites.front_default,
         spriteGifUrl: currentPokemon.sprites.other?.showdown?.front_default ?? null,
+        generation,
       };
     }
-    const [pokemon, species] = await Promise.all([
-      fetchPokeApi<PokeApiPokemon>(`pokemon/${pokedexId}`),
-      fetchPokeApi<PokeApiSpecies>(`pokemon-species/${pokedexId}`),
-    ]);
+    const pokemon = await fetchPokeApi<PokeApiPokemon>(`pokemon/${pokedexId}`);
     const nameGerman = germanName(species.names);
     return {
       pokedexId,
@@ -400,13 +450,16 @@ async function buildEvolutionDetails(
       displayName: nameGerman ?? slugLabel(pokemon.name),
       spriteUrl: pokemon.sprites.other?.['official-artwork']?.front_default ?? pokemon.sprites.front_default,
       spriteGifUrl: pokemon.sprites.other?.showdown?.front_default ?? null,
+      generation,
     };
-  });
+  }), loadGroupOrders()]);
 
-  return { nodes, edges };
+  const groupOrders = Object.fromEntries(groupOrderEntries.filter((entry): entry is readonly [string, number] => entry[1] !== undefined));
+  return scopeEvolutionToEdition({ nodes, edges }, currentPokemon.id, edition?.key ?? null, groupOrders);
 }
 
 async function resolveEdition(gameVersionKey?: string | null): Promise<PokemonEditionInfo | null> {
+  if (gameVersionKey === null) return null;
   const explicit = getKnownGameVersion(gameVersionKey);
   if (gameVersionKey) return explicit;
   const current = await getCurrentGameVersion();
@@ -428,8 +481,8 @@ async function fetchFreshPayload(
     fetchPokeApi<PokeApiSpecies>(`pokemon-species/${pokedexId}`),
   ]);
   const [levelUpMoves, evolution] = await Promise.all([
-    edition ? buildLevelUpMoves(pokemon, edition.versionGroupSlug) : Promise.resolve(null),
-    buildEvolutionDetails(pokemon, species),
+    edition ? buildLevelUpMoves(pokemon, edition) : Promise.resolve(null),
+    buildEvolutionDetails(pokemon, species, edition),
   ]);
   return {
     pokemon: buildPokemonSummary(pokemon, germanName(species.names)),
@@ -504,6 +557,7 @@ export async function getPokemonDetails(
   if (cached && cachedPayload && cached.expiresAt.getTime() > now.getTime()) {
     return {
       ...cachedPayload,
+      edition,
       cache: {
         status: 'hit',
         fetchedAt: cached.fetchedAt.toISOString(),
@@ -517,6 +571,7 @@ export async function getPokemonDetails(
     const payload = await refreshAndPersist(pokedexId, edition, versionGroupSlug, now);
     return {
       ...payload,
+      edition,
       cache: {
         status: 'miss',
         fetchedAt: now.toISOString(),
@@ -529,6 +584,7 @@ export async function getPokemonDetails(
       console.warn(`PokeAPI nicht erreichbar; verwende veralteten Detail-Cache für #${pokedexId}.`, error);
       return {
         ...cachedPayload,
+        edition,
         cache: {
           status: 'stale',
           fetchedAt: cached.fetchedAt.toISOString(),

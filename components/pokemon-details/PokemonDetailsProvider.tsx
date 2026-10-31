@@ -9,10 +9,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ButtonHTMLAttributes,
   type ReactNode,
 } from 'react';
 import type { PokemonDetailsResponse } from '@/lib/pokemon-details';
+import { getPokemonDetailsCacheRevision, getPokemonDetailsRequestUrl, invalidatePokemonDetails, loadPokemonDetails, peekPokemonDetails, subscribePokemonDetailsCache } from '@/lib/pokemon-details-client';
 
 const PokemonDetailsDialog = dynamic(() => import('./PokemonDetailsDialog'), {
   ssr: false,
@@ -46,15 +48,6 @@ interface PokemonDetailsProviderProps {
 }
 
 const PokemonDetailsContext = createContext<PokemonDetailsContextValue | null>(null);
-const responseCache = new Map<string, PokemonDetailsResponse>();
-
-function getRequestUrl(pokedexId: number, gameVersionKey?: string | null) {
-  const query = gameVersionKey
-    ? `?gameVersion=${encodeURIComponent(gameVersionKey)}`
-    : '';
-  return `/api/pokemon/${pokedexId}/details${query}`;
-}
-
 function getTargetName(target: PokemonDetailsTarget) {
   return target.displayName || target.nameGerman || target.name || `Pokémon #${target.pokedexId}`;
 }
@@ -69,7 +62,9 @@ export function PokemonDetailsProvider({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
+  const [settledRequestKey, setSettledRequestKey] = useState<string | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+  useSyncExternalStore(subscribePokemonDetailsCache, getPokemonDetailsCacheRevision, () => 0);
 
   const closePokemonDetails = useCallback(() => {
     const trigger = triggerRef.current;
@@ -77,6 +72,7 @@ export function PokemonDetailsProvider({
     setDetails(null);
     setLoading(false);
     setError(null);
+    setSettledRequestKey(null);
     triggerRef.current = null;
     window.requestAnimationFrame(() => trigger?.focus());
   }, []);
@@ -85,7 +81,7 @@ export function PokemonDetailsProvider({
     pokemon: PokemonDetailsTarget,
     trigger?: HTMLElement | null,
   ) => {
-    const cached = responseCache.get(getRequestUrl(pokemon.pokedexId, gameVersionKey));
+    const cached = peekPokemonDetails(pokemon.pokedexId, gameVersionKey);
     triggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null);
@@ -93,45 +89,42 @@ export function PokemonDetailsProvider({
     setDetails(cached ?? null);
     setLoading(!cached);
     setError(null);
+    setSettledRequestKey(cached ? getPokemonDetailsRequestUrl(pokemon.pokedexId, gameVersionKey) : null);
   }, [gameVersionKey]);
 
   useEffect(() => {
     if (!target) return;
 
-    const requestUrl = getRequestUrl(target.pokedexId, gameVersionKey);
-    const cached = responseCache.get(requestUrl);
-    if (cached) return;
+    let current = true;
+    const requestKey = getPokemonDetailsRequestUrl(target.pokedexId, gameVersionKey);
 
-    const controller = new AbortController();
-
-    fetch(requestUrl, { signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) {
-          const body = await response.text().catch(() => '');
-          throw new Error(body || `Die Pokémon-Daten konnten nicht geladen werden (${response.status}).`);
-        }
-        return response.json() as Promise<PokemonDetailsResponse>;
-      })
+    loadPokemonDetails(target.pokedexId, gameVersionKey)
       .then(response => {
-        responseCache.set(requestUrl, response);
+        if (!current) return;
         setDetails(response);
         setError(null);
       })
       .catch(reason => {
-        if (controller.signal.aborted) return;
+        if (!current) return;
         setError(reason instanceof Error ? reason.message : 'Die Pokémon-Daten konnten nicht geladen werden.');
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (current) {
+          setLoading(false);
+          setSettledRequestKey(requestKey);
+        }
       });
 
-    return () => controller.abort();
+    // The same request can be in use by a comparison section: ignore, don't abort it.
+    return () => { current = false; };
   }, [gameVersionKey, requestVersion, target]);
 
   const contextValue = useMemo<PokemonDetailsContextValue>(() => ({
     openPokemonDetails,
     closePokemonDetails,
   }), [closePokemonDetails, openPokemonDetails]);
+  const settled = target && settledRequestKey === getPokemonDetailsRequestUrl(target.pokedexId, gameVersionKey);
+  const cachedDetails = target ? peekPokemonDetails(target.pokedexId, gameVersionKey) : undefined;
 
   return (
     <PokemonDetailsContext.Provider value={contextValue}>
@@ -140,12 +133,13 @@ export function PokemonDetailsProvider({
         <PokemonDetailsDialog
           target={target}
           targetName={getTargetName(target)}
-          details={details}
-          loading={loading}
-          error={error}
+          details={cachedDetails ?? (settled ? details : null)}
+          loading={!cachedDetails && (!settled || loading)}
+          error={cachedDetails ? null : settled ? error : null}
           gameVersionName={gameVersionName}
           onClose={closePokemonDetails}
           onRetry={() => {
+            invalidatePokemonDetails(target.pokedexId, gameVersionKey);
             setDetails(null);
             setLoading(true);
             setError(null);
