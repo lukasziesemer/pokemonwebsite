@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import {
+  buildOpenRoutes,
   buildRecentEvents,
   type AdminDashboardData,
   type AdminDashboardEncounter,
@@ -43,6 +44,8 @@ const ENCOUNTER_SELECT = {
     },
   },
 } as const;
+
+const MAX_OPEN_ROUTES = 8;
 
 function logSectionFailure(section: string, reason: unknown) {
   console.error(`Admin dashboard: ${section} konnte nicht geladen werden`, reason);
@@ -107,25 +110,15 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     orderBy: { createdAt: 'asc' },
   });
 
-  const assignmentsPromise = Promise.all([
-    prisma.encounter.count({
-      where: {
-        teamSlot: null,
-        isKnockedOut: false,
-        isNotCaught: false,
-      },
-    }),
-    prisma.encounter.findMany({
-      where: {
-        teamSlot: null,
-        isKnockedOut: false,
-        isNotCaught: false,
-      },
-      select: ENCOUNTER_SELECT,
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-    }),
-  ]);
+  const assignmentsPromise = prisma.encounter.findMany({
+    where: {
+      teamSlot: null,
+      isKnockedOut: false,
+      isNotCaught: false,
+    },
+    select: ENCOUNTER_SELECT,
+    orderBy: [{ route: { order: 'asc' } }, { id: 'asc' }],
+  });
 
   const eventsPromise = Promise.all([
     prisma.encounter.findMany({
@@ -197,11 +190,12 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     logSectionFailure('Teambelegung', playersResult.reason);
   }
 
-  let availableEncounterCount: number | null = null;
-  let availableEncounters: AdminDashboardEncounter[] = [];
+  let openRouteCount: number | null = null;
+  let openRoutes: AdminDashboardData['openRoutes'] = [];
   if (assignmentsResult.status === 'fulfilled') {
-    availableEncounterCount = assignmentsResult.value[0];
-    availableEncounters = assignmentsResult.value[1];
+    const allOpenRoutes = buildOpenRoutes(assignmentsResult.value, players.length);
+    openRouteCount = allOpenRoutes.length;
+    openRoutes = allOpenRoutes.slice(0, MAX_OPEN_ROUTES);
   } else {
     warnings.push('Offene Teamzuweisungen konnten nicht geladen werden.');
     logSectionFailure('offene Teamzuweisungen', assignmentsResult.reason);
@@ -252,8 +246,8 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     activeRunCount,
     players,
     teamsAvailable: playersResult.status === 'fulfilled',
-    availableEncounters,
-    availableEncounterCount,
+    openRoutes,
+    openRouteCount,
     assignmentsAvailable: assignmentsResult.status === 'fulfilled',
     recentEvents,
     eventsAvailable: eventsResult.status === 'fulfilled',

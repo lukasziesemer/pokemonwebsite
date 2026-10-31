@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expandAllRoutes } from './fixtures';
 
 const adminUsername = process.env.ADMIN_USERNAME;
 const adminPassword = process.env.ADMIN_PASSWORD;
@@ -13,6 +14,7 @@ async function openRoutes(page: Page) {
   await expect(page.getByRole('button', { name: 'Route erstellen' })).toBeVisible();
   const rows = page.locator('.route-list-row');
   test.skip((await rows.count()) === 0, 'Der aktuelle Spielstand enthält keine Routen.');
+  await expandAllRoutes(page);
   return rows;
 }
 

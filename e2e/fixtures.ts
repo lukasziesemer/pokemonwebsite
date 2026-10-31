@@ -1,4 +1,13 @@
-import type { Page, Route } from '@playwright/test';
+import { expect, type Page, type Route } from '@playwright/test';
+
+/** Routen sind kompakt; das Klicken wird wiederholt, bis die Seite hydriert ist. */
+export async function expandAllRoutes(page: Page) {
+  const toggle = page.getByRole('button', { name: /^Alle (auf|ein)klappen$/ });
+  await expect(async () => {
+    if ((await toggle.textContent()) === 'Alle aufklappen') await toggle.click();
+    await expect(toggle).toHaveText('Alle einklappen', { timeout: 500 });
+  }).toPass();
+}
 
 const json = (route: Route, body: unknown) =>
   route.fulfill({

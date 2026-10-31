@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import TeamDisplay from '@/components/TeamDisplay';
 import RouteList from '@/components/RouteList';
@@ -102,9 +103,17 @@ interface Pokemon {
   nameGerman: string | null;
 }
 
+/** Es läuft kein Run: endedRunNumber nennt den letzten, null heißt noch nie einer. */
+export interface RouteRunNotice {
+  endedRunNumber: number | null;
+}
+
 interface PokerouteClientProps {
   initialPlayers: Player[];
   initialRoutes: RouteListRoute[];
+  /** Aus einem Link der Admin-Zentrale: Diese Route ist beim Öffnen aufgeklappt. */
+  initialRouteId: number | null;
+  runNotice: RouteRunNotice | null;
   currentGameVersion: { key: string; name: string } | null;
 }
 
@@ -113,6 +122,8 @@ const NO_POKEMON: Pokemon[] = [];
 export default function PokerouteClient({
   initialPlayers,
   initialRoutes,
+  initialRouteId,
+  runNotice,
   currentGameVersion,
 }: PokerouteClientProps) {
   const router = useRouter();
@@ -241,6 +252,19 @@ export default function PokerouteClient({
         </dl>
       </header>
 
+      {isAdmin && runNotice ? (
+        <div role="status" className="app-section flex flex-wrap items-center justify-between gap-3 border-l-4 border-amber-500 bg-amber-500/5 px-3 py-2 text-sm font-bold text-amber-800 dark:text-amber-200">
+          <p>
+            {runNotice.endedRunNumber === null
+              ? 'Es läuft noch kein Run. Änderungen hier gehören zu keinem Run.'
+              : `Run #${runNotice.endedRunNumber} ist beendet. Änderungen hier gehören zu keinem laufenden Run.`}
+          </p>
+          <Link href="/admin/gamesaves" className="app-action">
+            {runNotice.endedRunNumber === null ? 'Run starten' : 'Nächsten Run starten'}
+          </Link>
+        </div>
+      ) : null}
+
       <section className="app-section" aria-labelledby="team-overview-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b-2 border-[var(--foreground)] pb-2">
           <div>
@@ -326,6 +350,7 @@ export default function PokerouteClient({
             gameVersionKey={currentGameVersion?.key ?? null}
             onTeamUpdate={reloadData}
             onStatusSet={setUndoableChange}
+            initialExpandedRouteId={initialRouteId}
             pokemon={pokemon}
           />
         </div>

@@ -5,6 +5,7 @@
  */
 
 import TabelleClient, { type RouteRow } from './TabelleClient';
+import { parseStatusFilter, parseTeamFilter } from './table-filters';
 import AppPageTitle from '@/components/layout/AppPageTitle';
 import { getCurrentGameVersion } from '@/lib/current-game';
 import prisma from '@/lib/prisma';
@@ -177,7 +178,12 @@ async function getTableData(): Promise<{
   }
 }
 
-export default async function TabellePage() {
+export default async function TabellePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ team?: string; status?: string }>;
+}) {
+  const { team, status } = await searchParams;
   const [data, currentGameVersion] = await Promise.all([
     getTableData(),
     getCurrentGameVersion(),
@@ -207,6 +213,8 @@ export default async function TabellePage() {
         <TabelleClient
           players={data.players}
           rows={data.rows}
+          initialTeamFilter={parseTeamFilter(team)}
+          initialStatusFilter={parseStatusFilter(status)}
           currentGameVersion={currentGameVersion
             ? { key: currentGameVersion.key, name: currentGameVersion.name }
             : null}

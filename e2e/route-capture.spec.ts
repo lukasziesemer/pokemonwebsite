@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { expandAllRoutes } from './fixtures';
 
 const adminUsername = process.env.ADMIN_USERNAME;
 const adminPassword = process.env.ADMIN_PASSWORD;
@@ -98,6 +99,7 @@ test('übernimmt in der Routenzeile den ersten Treffer mit Enter', async ({ page
   const requests = await interceptCaptures(page);
   page.on('dialog', (dialog) => void dialog.accept());
   await page.goto('/pokeroute');
+  await expandAllRoutes(page);
 
   const search = page.locator('.route-list-row').getByRole('combobox').first();
   test.skip((await search.count()) === 0, 'Der aktuelle Spielstand enthält keinen freien Platz.');

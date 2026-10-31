@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { expandAllRoutes } from './fixtures';
 
 const adminUsername = process.env.ADMIN_USERNAME;
 const adminPassword = process.env.ADMIN_PASSWORD;
@@ -11,6 +12,7 @@ async function openRoutes(page: Page) {
     (await page.locator('.route-list-row').count()) === 0,
     'Der aktuelle Spielstand enthält keine Routen; Testdaten kommen aus e2e/seed-test-db.mjs.',
   );
+  await expandAllRoutes(page);
 }
 
 async function openAdminRoutes(page: Page) {

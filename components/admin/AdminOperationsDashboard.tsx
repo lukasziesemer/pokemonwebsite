@@ -1,6 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import AssignRouteButton from './AssignRouteButton';
 import {
+  getFirstFreeTeamSlot,
   getPlayerTeamSummary,
   getPokemonDisplayName,
   TEAM_SIZE,
@@ -291,7 +293,8 @@ function TeamsSection({ data }: { data: AdminDashboardData }) {
 }
 
 function AssignmentsSection({ data }: { data: AdminDashboardData }) {
-  const total = data.availableEncounterCount;
+  const total = data.openRouteCount;
+  const freeSlot = getFirstFreeTeamSlot(data.players);
 
   return (
     <section
@@ -299,8 +302,8 @@ function AssignmentsSection({ data }: { data: AdminDashboardData }) {
       aria-labelledby="assignments-heading"
     >
       <SectionHeading
-        title="Offene Zuweisungen"
-        description="Aktive Encounters ohne Teamplatz"
+        title="Offene Routen"
+        description="Aktive Routen ohne Teamplatz"
         trailing={
           total !== null ? (
             <span className="w-fit rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
@@ -315,7 +318,7 @@ function AssignmentsSection({ data }: { data: AdminDashboardData }) {
       ) : total === 0 ? (
         <div className="p-5">
           <p className="font-semibold text-emerald-700 dark:text-emerald-300">
-            Alle aktiven Encounters sind zugeordnet.
+            Alle aktiven Routen sind zugeordnet.
           </p>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Derzeit ist keine Teamentscheidung offen.
@@ -324,29 +327,41 @@ function AssignmentsSection({ data }: { data: AdminDashboardData }) {
       ) : (
         <>
           <ul className="divide-y divide-[var(--border-default)]">
-            {data.availableEncounters.map((encounter) => (
-              <li key={encounter.id} className="p-4">
-                <PokemonIdentity pokemon={encounter.pokemon} nickname={encounter.nickname} />
-                <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                  <span className="font-semibold text-[var(--foreground)]">
-                    {encounter.player.name}
-                  </span>{' '}
-                  · {encounter.route.name}
-                </p>
+            {data.openRoutes.map((route) => (
+              <li key={route.routeId} className="space-y-3 p-4">
+                <p className="font-bold text-[var(--foreground)]">{route.routeName}</p>
+                <ul className="space-y-2">
+                  {route.encounters.map((encounter) => (
+                    <li key={encounter.id} className="flex items-center justify-between gap-3">
+                      <PokemonIdentity pokemon={encounter.pokemon} nickname={encounter.nickname} compact />
+                      <span className="shrink-0 text-xs font-semibold text-[var(--text-secondary)]">
+                        {encounter.player.name}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap items-center gap-2">
+                  {route.isComplete && freeSlot !== null ? (
+                    <AssignRouteButton routeId={route.routeId} routeName={route.routeName} teamSlot={freeSlot} />
+                  ) : null}
+                  <Link href={`/pokeroute?route=${route.routeId}`} className="app-action">
+                    {route.isComplete ? 'Zur Route' : 'Fang fehlt noch'}
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>
-          {total !== null && total > data.availableEncounters.length ? (
+          {total !== null && total > data.openRoutes.length ? (
             <p className="border-t border-[var(--border-default)] px-4 py-3 text-xs text-[var(--text-secondary)]">
-              Zusätzlich {total - data.availableEncounters.length} weitere offene Zuweisungen.
+              Zusätzlich {total - data.openRoutes.length} weitere offene Routen.
             </p>
           ) : null}
           <div className="border-t border-[var(--border-default)] p-4">
             <Link
-              href="/tabelle"
+              href="/tabelle?team=not-in-team&status=active"
               className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--background-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              In der Tabelle zuweisen
+              Alle offenen in der Tabelle
             </Link>
           </div>
         </>

@@ -7,6 +7,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import PokemonCard from './PokemonCard';
 import EncounterActionMenu from './admin/EncounterActionMenu';
@@ -26,6 +27,7 @@ import { fetchJson } from '@/lib/fetchJson';
 import { mutateEncounterLink } from '@/lib/encounter-link-admin';
 import { getErrorMessage } from '@/lib/component-utils';
 import { buildPokeradarHref } from '@/lib/pokeradar-team-data';
+import { filterRouteList, type RouteListView } from '@/lib/route-list-filter';
 import { parseTypes } from '@/lib/typeEffectiveness';
 import type { EncounterWithMeta, PlayerBase, PokemonListItem } from '@/lib/types';
 import type { EncounterAdminTarget } from '@/lib/encounter-admin';
@@ -89,6 +91,7 @@ interface RouteListProps {
   gameVersionKey?: string | null;
   onTeamUpdate?: () => void;
   onStatusSet?: (change: RouteStatusChange) => void;
+  initialExpandedRouteId?: number | null;
   pokemon?: PokemonListItem[];
 }
 
@@ -280,6 +283,35 @@ function StatusInfoBox({ type, info }: StatusInfoBoxProps) {
   );
 }
 
+function RouteSummary({ route, players }: { route: Route; players: PlayerBase[] }) {
+  return (
+    <ul className="flex flex-col gap-x-5 gap-y-1 px-3 sm:flex-row sm:flex-wrap sm:pl-14">
+      {players.map((player) => {
+        const encounter = route.encounters.find((candidate) => candidate.player.id === player.id);
+
+        return (
+          <li key={player.id} className="flex min-h-8 min-w-0 items-center gap-2 text-sm">
+            <PlayerAvatar avatar={player.avatar} name={player.name} color={player.color} size={20} className="h-5 w-5" />
+            <span className="sr-only">{player.name}:</span>
+            {encounter ? (
+              <>
+                {encounter.pokemon.spriteUrl ? (
+                  <Image src={encounter.pokemon.spriteUrl} alt="" width={28} height={28} className="h-7 w-7 object-contain" />
+                ) : null}
+                <span className="truncate font-semibold text-[var(--foreground)]">
+                  {encounter.nickname || encounter.pokemon.nameGerman || encounter.pokemon.name}
+                </span>
+              </>
+            ) : (
+              <span className="italic text-[var(--text-tertiary)]">Noch kein Pokémon</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 // =============================================================================
 // Haupt-Komponente
 // =============================================================================
@@ -291,6 +323,7 @@ const RouteList = memo(function RouteList({
   gameVersionKey = null,
   onTeamUpdate,
   onStatusSet,
+  initialExpandedRouteId = null,
   pokemon = [],
 }: RouteListProps) {
   // State
@@ -302,6 +335,37 @@ const RouteList = memo(function RouteList({
   const [editingRouteId, setEditingRouteId] = useState<number | null>(null);
   const [editingRouteName, setEditingRouteName] = useState('');
   const occupiedTeamSlots = useMemo(() => getOccupiedTeamSlots(routes), [routes]);
+
+  // Liste: kompakt, damit lange Runs überschaubar bleiben.
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState<RouteListView>('all');
+  const [expandedRouteIds, setExpandedRouteIds] = useState(
+    () => new Set(initialExpandedRouteId === null ? [] : [initialExpandedRouteId]),
+  );
+  const visibleRoutes = useMemo(
+    () => filterRouteList(routes, view, query),
+    [query, routes, view],
+  );
+  const allExpanded = visibleRoutes.length > 0
+    && visibleRoutes.every((route) => expandedRouteIds.has(route.id));
+
+  useEffect(() => {
+    if (initialExpandedRouteId === null) return;
+    document.getElementById(`route-${initialExpandedRouteId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }, [initialExpandedRouteId]);
+
+  const toggleRoute = (routeId: number) => {
+    setExpandedRouteIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(routeId)) next.add(routeId);
+      return next;
+    });
+  };
+
+  const toggleAllRoutes = () => {
+    setExpandedRouteIds(allExpanded ? new Set() : new Set(visibleRoutes.map((route) => route.id)));
+  };
 
   // ==========================================================================
   // Handler
@@ -453,8 +517,47 @@ const RouteList = memo(function RouteList({
 
   return (
     <>
-      <div className="divide-y divide-[var(--border-default)] border-t border-[var(--border-default)]">
-        {routes.map((route, routeIndex) => {
+      <div role="search" aria-label="Routen" className="app-toolbar">
+        <input
+          type="search"
+          aria-label="Route oder Pokémon suchen"
+          placeholder="Route oder Pokémon suchen"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="min-h-11 min-w-[12rem] flex-1 border border-[var(--border-default)] bg-[var(--card-bg)] px-3 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)]"
+        />
+        <select
+          aria-label="Routen filtern"
+          value={view}
+          onChange={(event) => setView(event.target.value as RouteListView)}
+          className="min-h-11 border border-[var(--border-default)] bg-[var(--card-bg)] px-3 text-sm text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)]"
+        >
+          <option value="all">Alle Routen</option>
+          <option value="open">Offen</option>
+          <option value="team">Im Team</option>
+          <option value="inactive">K.O. oder nicht gefangen</option>
+        </select>
+        <span className="text-xs font-bold text-[var(--text-secondary)]">
+          {visibleRoutes.length} von {routes.length}
+        </span>
+        <button
+          type="button"
+          onClick={toggleAllRoutes}
+          disabled={visibleRoutes.length === 0}
+          className="app-action disabled:opacity-50"
+        >
+          {allExpanded ? 'Alle einklappen' : 'Alle aufklappen'}
+        </button>
+      </div>
+
+      {visibleRoutes.length === 0 ? (
+        <p className="py-12 text-center text-[var(--text-secondary)]">Keine Route passt zu dieser Auswahl.</p>
+      ) : null}
+
+      <div className="divide-y divide-[var(--border-default)]">
+        {visibleRoutes.map((route) => {
+          const routeIndex = routes.indexOf(route);
+          const isExpanded = expandedRouteIds.has(route.id);
           const routeAverage = calculateAverageStats(route.encounters);
           const isKnockedOut = route.encounters.length > 0
             && route.encounters.every((encounter) => encounter.isKnockedOut);
@@ -506,6 +609,17 @@ const RouteList = memo(function RouteList({
 
                 {route.encounters.length > 0 || isAdmin ? (
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-controls={isExpanded ? `route-${route.id}-details` : undefined}
+                      aria-label={`${route.name} ${isExpanded ? 'einklappen' : 'aufklappen'}`}
+                      onClick={() => toggleRoute(route.id)}
+                      className="app-action"
+                    >
+                      {isExpanded ? 'Einklappen' : 'Aufklappen'}
+                    </button>
+
                     {isAdmin && canJoinTeam ? (
                       <button
                         type="button"
@@ -522,13 +636,16 @@ const RouteList = memo(function RouteList({
                     ) : null}
 
                     {route.encounters.length > 0 ? (
-                      <Link
-                        href={routeComparisonHref ?? '/pokeradar'}
-                        aria-label={`${route.name} im Vergleich öffnen`}
-                        className="app-action"
-                      >
-                        Im Vergleich öffnen
-                      </Link>
+                      // Mobil zählt jede Zeile: Der Vergleich steht dort erst aufgeklappt bereit.
+                      <span className={isExpanded ? 'contents' : 'contents max-sm:hidden'}>
+                        <Link
+                          href={routeComparisonHref ?? '/pokeradar'}
+                          aria-label={`${route.name} im Vergleich öffnen`}
+                          className="app-action"
+                        >
+                          Im Vergleich öffnen
+                        </Link>
+                      </span>
                     ) : null}
 
                     {isAdmin ? (
@@ -553,90 +670,96 @@ const RouteList = memo(function RouteList({
                 ) : null}
               </div>
 
-              {/* Status-Info */}
-              {isKnockedOut && koInfo && <StatusInfoBox type="ko" info={koInfo} />}
-              {isNotCaught && notCaughtInfo && <StatusInfoBox type="notCaught" info={notCaughtInfo} />}
+              {isExpanded ? (
+                <div id={`route-${route.id}-details`}>
+                  {/* Status-Info */}
+                  {isKnockedOut && koInfo && <StatusInfoBox type="ko" info={koInfo} />}
+                  {isNotCaught && notCaughtInfo && <StatusInfoBox type="notCaught" info={notCaughtInfo} />}
 
-              {/* Encounters */}
-              {/* Spalten brechen um statt zu scrollen: ein overflow-Container würde die Pokémon-Suche abschneiden. */}
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(14rem,100%),1fr))] border-l border-t border-[var(--border-default)]">
-                {players.map((player) => {
-                  const playerEncounters = route.encounters.filter((e) => e.player.id === player.id);
-                  const hasEncounter = playerEncounters.length > 0;
-                  const key = `${route.id}-${player.id}`;
-                  const searchValue = addPokemonSearch[key] || '';
-                  const isAdding = addingPokemon[key] || false;
+                  {/* Encounters */}
+                  {/* Spalten brechen um statt zu scrollen: ein overflow-Container würde die Pokémon-Suche abschneiden. */}
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(min(14rem,100%),1fr))] border-l border-t border-[var(--border-default)]">
+                    {players.map((player) => {
+                      const playerEncounters = route.encounters.filter((e) => e.player.id === player.id);
+                      const hasEncounter = playerEncounters.length > 0;
+                      const key = `${route.id}-${player.id}`;
+                      const searchValue = addPokemonSearch[key] || '';
+                      const isAdding = addingPokemon[key] || false;
 
-                  return (
-                    <div key={player.id} className="border-b border-r border-[var(--border-default)] p-3">
-                      <div className="mb-3 flex items-center gap-2 border-b-2 pb-2" style={{ borderColor: player.color }}>
-                        {/* Avatar oder Farbe */}
-                        <PlayerAvatar
-                          avatar={player.avatar}
-                          name={player.name}
-                          color={player.color}
-                          size={24}
-                          className="h-6 w-6"
-                        />
-                        <h4 className="text-sm font-black uppercase text-[var(--foreground)]">{player.name}</h4>
-                      </div>
+                      return (
+                        <div key={player.id} className="border-b border-r border-[var(--border-default)] p-3">
+                          <div className="mb-3 flex items-center gap-2 border-b-2 pb-2" style={{ borderColor: player.color }}>
+                            {/* Avatar oder Farbe */}
+                            <PlayerAvatar
+                              avatar={player.avatar}
+                              name={player.name}
+                              color={player.color}
+                              size={24}
+                              className="h-6 w-6"
+                            />
+                            <h4 className="text-sm font-black uppercase text-[var(--foreground)]">{player.name}</h4>
+                          </div>
 
-                      {hasEncounter ? (
-                        <div className="flex flex-wrap items-stretch gap-2">
-                          {playerEncounters.map((encounter) => (
-                            <div key={encounter.id} className="w-[132px] shrink-0">
-                              <div className={`relative group ${cardHeight}`}>
-                                {isAdmin ? (
-                                  <div className="absolute right-1 top-1 z-20">
-                                    <EncounterActionMenu
-                                      encounter={toEncounterAdminTarget(encounter, route)}
-                                      pokemonOptions={pokemon}
-                                      gameVersionKey={gameVersionKey}
-                                      compact
-                                      disabled={processing}
-                                      onUpdated={() => { void onTeamUpdate?.(); }}
-                                    />
-                                  </div>
-                                ) : null}
+                          {hasEncounter ? (
+                            <div className="flex flex-wrap items-stretch gap-2">
+                              {playerEncounters.map((encounter) => (
+                                <div key={encounter.id} className="w-[132px] shrink-0">
+                                  <div className={`relative group ${cardHeight}`}>
+                                    {isAdmin ? (
+                                      <div className="absolute right-1 top-1 z-20">
+                                        <EncounterActionMenu
+                                          encounter={toEncounterAdminTarget(encounter, route)}
+                                          pokemonOptions={pokemon}
+                                          gameVersionKey={gameVersionKey}
+                                          compact
+                                          disabled={processing}
+                                          onUpdated={() => { void onTeamUpdate?.(); }}
+                                        />
+                                      </div>
+                                    ) : null}
 
-                                {encounter.isKnockedOut || encounter.isNotCaught ? (
-                                  <span className={`absolute left-1 top-1 z-10 rounded-full px-2 py-1 text-[10px] font-bold text-white ${encounter.isKnockedOut ? 'bg-red-600' : 'bg-amber-600'}`}>
-                                    {encounter.isKnockedOut ? 'K.O.' : 'Nicht gefangen'}
-                                  </span>
-                                ) : null}
+                                    {encounter.isKnockedOut || encounter.isNotCaught ? (
+                                      <span className={`absolute left-1 top-1 z-10 rounded-full px-2 py-1 text-[10px] font-bold text-white ${encounter.isKnockedOut ? 'bg-red-600' : 'bg-amber-600'}`}>
+                                        {encounter.isKnockedOut ? 'K.O.' : 'Nicht gefangen'}
+                                      </span>
+                                    ) : null}
                                 
-                                <div className="route-pokemon-stat-shell h-full">
-                                  <PokemonDetailsTrigger
-                                    pokemon={{
-                                      ...encounter.pokemon,
-                                      displayName: encounter.nickname || encounter.pokemon.nameGerman || encounter.pokemon.name,
-                                      types: parseTypes(encounter.pokemon.types),
-                                    }}
-                                    className={`block h-full w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] [&>div]:cursor-inherit ${cardHeight} ${(encounter.isKnockedOut || encounter.isNotCaught) ? 'opacity-60' : ''}`}
-                                  >
-                                    <PokemonCard pokemon={encounter.pokemon} nickname={encounter.nickname} size="tiny" />
-                                  </PokemonDetailsTrigger>
+                                    <div className="route-pokemon-stat-shell h-full">
+                                      <PokemonDetailsTrigger
+                                        pokemon={{
+                                          ...encounter.pokemon,
+                                          displayName: encounter.nickname || encounter.pokemon.nameGerman || encounter.pokemon.name,
+                                          types: parseTypes(encounter.pokemon.types),
+                                        }}
+                                        className={`block h-full w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] [&>div]:cursor-inherit ${cardHeight} ${(encounter.isKnockedOut || encounter.isNotCaught) ? 'opacity-60' : ''}`}
+                                      >
+                                        <PokemonCard pokemon={encounter.pokemon} nickname={encounter.nickname} size="tiny" />
+                                      </PokemonDetailsTrigger>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              ))}
                             </div>
-                          ))}
+                          ) : isAdmin ? (
+                            <PokemonCombobox
+                              label={`Pokémon für ${player.name} auf ${route.name}`}
+                              value={searchValue}
+                              onChange={(v) => setAddPokemonSearch((current) => ({ ...current, [key]: v }))}
+                              options={pokemon}
+                              onSelect={(selected) => handleAddPokemon(route.id, player.id, selected.id)}
+                              disabled={isAdding}
+                            />
+                          ) : (
+                            <p className="text-[var(--text-tertiary)] text-sm italic min-w-[160px]">Noch kein Pokemon</p>
+                          )}
                         </div>
-                      ) : isAdmin ? (
-                        <PokemonCombobox
-                          label={`Pokémon für ${player.name} auf ${route.name}`}
-                          value={searchValue}
-                          onChange={(v) => setAddPokemonSearch((current) => ({ ...current, [key]: v }))}
-                          options={pokemon}
-                          onSelect={(selected) => handleAddPokemon(route.id, player.id, selected.id)}
-                          disabled={isAdding}
-                        />
-                      ) : (
-                        <p className="text-[var(--text-tertiary)] text-sm italic min-w-[160px]">Noch kein Pokemon</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <RouteSummary route={route} players={players} />
+              )}
             </div>
           );
         })}
