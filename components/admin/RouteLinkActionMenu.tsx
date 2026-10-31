@@ -19,11 +19,13 @@ import {
 import EncounterAdminDialog from './EncounterAdminDialog';
 import {
   describeTeamSlot,
+  describeTeamSlotChange,
   getEncounterRouteLinkState,
   getFirstFreeTeamSlot,
   pokemonDisplayName,
   TEAM_SLOTS,
   type EncounterRouteLinkTarget,
+  type RouteStatusChange,
 } from './route-link-ui';
 
 export type RouteLinkActionMenuTarget = EncounterRouteLinkTarget;
@@ -43,6 +45,8 @@ interface RouteLinkActionMenuProps {
   routeActions?: RouteEditActions;
   onUpdated?: (encounters: EncounterAdminTarget[]) => void;
   onDeleted?: (routeId: number) => void;
+  /** K.O. oder „Nicht gefangen“ gesetzt; das Menü selbst verschwindet dabei eventuell aus dem Team. */
+  onStatusSet?: (change: RouteStatusChange) => void;
   onError?: (message: string) => void;
   triggerLabel?: string;
   compact?: boolean;
@@ -50,7 +54,10 @@ interface RouteLinkActionMenuProps {
   className?: string;
 }
 
-type DialogAction = EncounterLinkAdminAction['action'] | 'remove-from-team' | null;
+type DialogAction =
+  | Exclude<EncounterLinkAdminAction['action'], 'take-team-slot'>
+  | 'remove-from-team'
+  | null;
 
 const inputClasses =
   'min-h-11 w-full border border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-2.5 text-[var(--foreground)] placeholder:text-[var(--text-tertiary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] disabled:opacity-50';
@@ -64,6 +71,7 @@ export default function RouteLinkActionMenu({
   routeActions,
   onUpdated,
   onDeleted,
+  onStatusSet,
   onError,
   triggerLabel = 'Route verwalten',
   compact = false,
@@ -103,6 +111,7 @@ export default function RouteLinkActionMenu({
   const firstFreeSlot = link.occupiedTeamSlots
     ? getFirstFreeTeamSlot(link.occupiedTeamSlots)
     : null;
+  const teamSlotChange = teamSlot === 'none' ? null : describeTeamSlotChange(Number(teamSlot), link);
 
   const resetForm = useCallback((action: Exclude<DialogAction, null>) => {
     setError(null);
@@ -227,6 +236,17 @@ export default function RouteLinkActionMenu({
       } else {
         onUpdated?.(result.encounters);
       }
+      if (action.action === 'knockout' || action.action === 'not-caught') {
+        onStatusSet?.({
+          routeId: link.route.id,
+          routeName: link.route.name,
+          status: action.action,
+          statusDate: (action.action === 'knockout'
+            ? result.encounters[0]?.koDate
+            : result.encounters[0]?.notCaughtDate) ?? null,
+          teamSlot: typeof state.teamSlot === 'number' ? state.teamSlot : null,
+        });
+      }
       setDialogAction(null);
     } catch (submitError) {
       const message =
@@ -243,10 +263,11 @@ export default function RouteLinkActionMenu({
   const confirmAction = () => {
     switch (dialogAction) {
       case 'set-team-slot':
-        void submit({
-          action: 'set-team-slot',
-          teamSlot: teamSlot === 'none' ? null : Number(teamSlot),
-        });
+        void submit(
+          teamSlotChange
+            ? { action: 'take-team-slot', teamSlot: Number(teamSlot) }
+            : { action: 'set-team-slot', teamSlot: teamSlot === 'none' ? null : Number(teamSlot) },
+        );
         break;
       case 'remove-from-team':
         void submit({ action: 'set-team-slot', teamSlot: null });
@@ -306,7 +327,7 @@ export default function RouteLinkActionMenu({
     },
     reactivate: {
       title: 'Route reaktivieren',
-      description: `${link.route.name}: K.O.- und Nicht-gefangen-Metadaten werden für alle betroffenen Pokémon entfernt. Ein Teamplatz wird nicht wiederhergestellt.`,
+      description: `${link.route.name}: K.O.- und Nicht-gefangen-Metadaten werden für alle betroffenen Pokémon entfernt. Ein früherer Teamplatz kommt nur über „Rückgängig“ direkt nach dem Setzen zurück.`,
       confirm: 'Reaktivieren',
     },
     'delete-link': {
@@ -443,7 +464,11 @@ export default function RouteLinkActionMenu({
                 disabled={!canConfirm}
                 className={`${primaryButtonClasses} ${copy.danger ? 'bg-red-600 hover:bg-red-700' : ''}`}
               >
-                {busy ? 'Wird gespeichert…' : copy.confirm}
+                {busy
+                  ? 'Wird gespeichert…'
+                  : dialogAction === 'set-team-slot' && teamSlotChange
+                    ? teamSlotChange.confirm
+                    : copy.confirm}
               </button>
             </>
           }
@@ -480,9 +505,13 @@ export default function RouteLinkActionMenu({
                   );
                 })}
               </select>
-              {state.canAssignToTeam && link.occupiedTeamSlots && !firstFreeSlot && state.teamSlot === null ? (
+              {teamSlotChange ? (
+                <span role="status" className="text-xs font-normal text-amber-800 dark:text-amber-200">
+                  {teamSlotChange.hint}
+                </span>
+              ) : state.canAssignToTeam && link.occupiedTeamSlots && !firstFreeSlot && state.teamSlot === null ? (
                 <span className="text-xs font-normal text-[var(--text-secondary)]">
-                  Das Team ist voll. Gib zuerst einen Platz frei.
+                  Das Team ist voll. Wähle einen Platz, um die Route dort zu ersetzen.
                 </span>
               ) : null}
               {!state.canAssignToTeam ? (

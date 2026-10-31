@@ -16,6 +16,16 @@ export interface EncounterRouteLinkTarget {
   occupiedTeamSlots?: OccupiedTeamSlots;
 }
 
+/** Merkt sich den Stand vor K.O. oder „Nicht gefangen“ für das Rückgängigmachen. */
+export interface RouteStatusChange {
+  routeId: number;
+  routeName: string;
+  status: 'knockout' | 'not-caught';
+  /** Zeitstempel des Status; unterscheidet diesen Wechsel von jedem späteren. */
+  statusDate: string | null;
+  teamSlot: number | null;
+}
+
 export interface EncounterRouteLinkState {
   memberCount: number;
   expectedPlayerCount: number;
@@ -131,6 +141,20 @@ export function getOpenCaptureRoutes<
   });
 }
 
+/** Rückgängig gilt nur, solange die Route noch genau in diesem Status steht. */
+export function isRouteStatusChangeCurrent(
+  change: RouteStatusChange,
+  routes: {
+    id: number;
+    encounters: { koDate: string | null; notCaughtDate: string | null }[];
+  }[],
+): boolean {
+  const encounters = routes.find((route) => route.id === change.routeId)?.encounters ?? [];
+  return encounters.length > 0 && encounters.every((encounter) =>
+    (change.status === 'knockout' ? encounter.koDate : encounter.notCaughtDate) === change.statusDate,
+  );
+}
+
 export function getFirstFreeTeamSlot(occupied: OccupiedTeamSlots): number | null {
   return TEAM_SLOTS.find((slot) => !occupied[slot]) ?? null;
 }
@@ -148,13 +172,29 @@ export function describeTeamSlot(
   canAssignToTeam: boolean,
 ) {
   const occupant = link.occupiedTeamSlots?.[slot];
-  const occupiedByOtherRoute = Boolean(occupant) && occupant?.routeId !== link.route.id;
   const suffix = occupant ? ` · ${occupant.routeName}` : link.occupiedTeamSlots ? ' · frei' : '';
 
   return {
     label: `Platz ${slot}${suffix}`,
-    disabled: !canAssignToTeam || occupiedByOtherRoute,
+    disabled: !canAssignToTeam,
   };
+}
+
+/** Folge der Platzwahl, wenn der Platz einer anderen Route gehört. */
+export function describeTeamSlotChange(slot: number, link: EncounterRouteLinkTarget) {
+  const occupant = link.occupiedTeamSlots?.[slot];
+  if (!occupant || occupant.routeId === link.route.id) return null;
+
+  const currentSlot = getEncounterRouteLinkState(link).teamSlot;
+  return typeof currentSlot === 'number'
+    ? {
+        confirm: 'Plätze tauschen',
+        hint: `${link.route.name} und ${occupant.routeName} tauschen die Plätze: ${occupant.routeName} rückt auf Platz ${currentSlot}.`,
+      }
+    : {
+        confirm: 'Route ersetzen',
+        hint: `${occupant.routeName} verliert Platz ${slot} und kommt aus dem Team.`,
+      };
 }
 
 export function getTeamSlotRouteOptions(

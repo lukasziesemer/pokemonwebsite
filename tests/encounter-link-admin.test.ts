@@ -40,7 +40,20 @@ describe('encounter-link action contract', () => {
       ok: true,
       action: { action: 'knockout', causedBy: 'Lukas', reason: null },
     });
-    expect(parseEncounterLinkAdminAction({ action: 'reactivate' })).toMatchObject({ ok: true });
+    expect(parseEncounterLinkAdminAction({ action: 'reactivate' })).toEqual({
+      ok: true,
+      action: { action: 'reactivate' },
+    });
+    expect(parseEncounterLinkAdminAction({ action: 'reactivate', teamSlot: 2 })).toEqual({
+      ok: true,
+      action: { action: 'reactivate', teamSlot: 2 },
+    });
+    expect(parseEncounterLinkAdminAction({ action: 'reactivate', teamSlot: 7 })).toMatchObject({ ok: false });
+    expect(parseEncounterLinkAdminAction({ action: 'take-team-slot', teamSlot: 4 })).toEqual({
+      ok: true,
+      action: { action: 'take-team-slot', teamSlot: 4 },
+    });
+    expect(parseEncounterLinkAdminAction({ action: 'take-team-slot', teamSlot: null })).toMatchObject({ ok: false });
     expect(parseEncounterLinkAdminAction({ action: 'delete-link' })).toMatchObject({ ok: true });
   });
 

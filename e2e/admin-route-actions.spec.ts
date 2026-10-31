@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const adminUsername = process.env.ADMIN_USERNAME;
 const adminPassword = process.env.ADMIN_PASSWORD;
@@ -14,6 +14,23 @@ async function openRoutes(page: Page) {
   const rows = page.locator('.route-list-row');
   test.skip((await rows.count()) === 0, 'Der aktuelle Spielstand enthält keine Routen.');
   return rows;
+}
+
+async function interceptLinkChanges(page: Page) {
+  const requests: unknown[] = [];
+  await page.route(/\/api\/admin\/encounter-links\/\d+$/, async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'E2E: Änderung sicher abgefangen' }),
+    });
+  });
+  return requests;
+}
+
+async function selectOccupiedSlot(dialog: Locator) {
+  await dialog.getByRole('combobox').selectOption('1');
 }
 
 test.describe('Routenmenü', () => {
@@ -46,11 +63,109 @@ test.describe('Teamplatz-Auswahl', () => {
     await page.getByRole('menuitem', { name: 'Teamplatz verwalten' }).click();
 
     const select = page.getByRole('dialog').getByRole('combobox');
-    const occupied = select.locator('option[disabled]');
+    const occupied = select.locator('option', { hasText: /^Platz \d · (?!frei$)/ });
     test.skip((await occupied.count()) === 0, 'Der aktuelle Spielstand belegt keinen Teamplatz.');
-    await expect(occupied.first()).toHaveText(/^Platz \d · .+/);
     await expect(select).not.toHaveValue('none');
     await expect(select.locator('option:checked')).toHaveText(/· frei$/);
+  });
+
+  test('ersetzt eine belegte Route mit einem Aufruf', async ({ page }) => {
+    const requests = await interceptLinkChanges(page);
+    const rows = await openRoutes(page);
+    const freeRoute = rows.filter({ hasNot: page.getByText(/^Im Team/) }).last();
+    await freeRoute.getByRole('button', { name: 'Route verwalten', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Teamplatz verwalten' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await selectOccupiedSlot(dialog);
+    await expect(dialog.getByRole('status')).toHaveText(/verliert Platz 1 und kommt aus dem Team\.$/);
+    await dialog.getByRole('button', { name: 'Route ersetzen' }).click();
+
+    await expect.poll(() => requests).toEqual([{ action: 'take-team-slot', teamSlot: 1 }]);
+  });
+
+  test('tauscht zwei Routen im Team mit einem Aufruf', async ({ page }) => {
+    const requests = await interceptLinkChanges(page);
+    const rows = await openRoutes(page);
+    const teamRoute = rows.filter({ has: page.getByText(/^Im Team · Platz 2$/) }).first();
+    test.skip((await teamRoute.count()) === 0, 'Der aktuelle Spielstand hat keine Route auf Platz 2.');
+    await teamRoute.getByRole('button', { name: 'Route verwalten', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Teamplatz verwalten' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await selectOccupiedSlot(dialog);
+    await expect(dialog.getByRole('status')).toHaveText(/rückt auf Platz 2\.$/);
+    await dialog.getByRole('button', { name: 'Plätze tauschen' }).click();
+
+    await expect.poll(() => requests).toEqual([{ action: 'take-team-slot', teamSlot: 1 }]);
+  });
+});
+
+test.describe('K.O. rückgängig', () => {
+  test('stellt nach dem K.O. den Teamplatz wieder her', async ({ page }) => {
+    const requests: unknown[] = [];
+    const koDate = '2026-10-31T12:00:00.000Z';
+    let knockedOutRouteId: number | null = null;
+    await page.route(/\/api\/routes$/, async (route) => {
+      const response = await route.fetch();
+      const routes = (await response.json()) as { id: number; encounters: object[] }[];
+      await route.fulfill({
+        response,
+        json: routes.map((candidate) => candidate.id !== knockedOutRouteId ? candidate : {
+          ...candidate,
+          encounters: candidate.encounters.map((encounter) => ({
+            ...encounter,
+            teamSlot: null,
+            isKnockedOut: true,
+            koCausedBy: 'Spieler Rot',
+            koDate,
+          })),
+        }),
+      });
+    });
+    await page.route(/\/api\/admin\/encounter-links\/\d+$/, async (route) => {
+      const body = route.request().postDataJSON() as { action: string };
+      requests.push(body);
+      if (body.action === 'knockout') {
+        knockedOutRouteId = Number(route.request().url().split('/').pop());
+        await route.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            routeId: knockedOutRouteId,
+            action: 'knockout',
+            count: 2,
+            encounters: [{ koDate, notCaughtDate: null }],
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'E2E: Änderung sicher abgefangen' }),
+      });
+    });
+
+    const rows = await openRoutes(page);
+    const teamRoute = rows.filter({ has: page.getByText(/^Im Team · Platz 1$/) }).first();
+    test.skip((await teamRoute.count()) === 0, 'Der aktuelle Spielstand hat keine Route auf Platz 1.');
+    await teamRoute.getByRole('button', { name: 'Route verwalten', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'K.O. setzen' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Spieler Rot' }).click();
+    await dialog.getByRole('button', { name: 'K.O. setzen' }).click();
+
+    const notice = page.getByRole('status').filter({ hasText: 'und hat Platz 1 verloren.' });
+    await expect(notice).toBeVisible();
+    await notice.getByRole('button', { name: 'Rückgängig' }).click();
+
+    await expect.poll(() => requests).toHaveLength(2);
+    expect(requests[1]).toEqual({ action: 'reactivate', teamSlot: 1 });
+    await expect(notice.getByRole('alert')).toHaveText('E2E: Änderung sicher abgefangen');
+    await notice.getByRole('button', { name: 'Schließen' }).click();
+    await expect(notice).toHaveCount(0);
   });
 });
 

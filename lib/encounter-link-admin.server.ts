@@ -79,6 +79,18 @@ function teamSlotConflict(routeId: number, routeName: string, teamSlot: number) 
   };
 }
 
+function requestedTeamSlot(action: EncounterLinkAdminAction): number | null {
+  switch (action.action) {
+    case 'set-team-slot':
+    case 'take-team-slot':
+      return action.teamSlot;
+    case 'reactivate':
+      return action.teamSlot ?? null;
+    default:
+      return null;
+  }
+}
+
 function toConsistencyInput(encounter: EncounterAdminPayload): EncounterLinkConsistencyInput {
   return {
     id: encounter.id,
@@ -142,7 +154,10 @@ export async function executeEncounterLinkAdminAction(
             return { kind: 'deleted' as const, count: deleted.count };
           }
 
-          if (action.action === 'set-team-slot' && action.teamSlot !== null) {
+          const targetTeamSlot = requestedTeamSlot(action);
+          let displacedRouteId: number | null = null;
+
+          if (targetTeamSlot !== null) {
             const report = auditEncounterLinkGroup(existing.map(toConsistencyInput));
             const blockingIssues = report.issues.filter(
               (issue) => issue.code !== 'mixed-team-slots',
@@ -153,8 +168,11 @@ export async function executeEncounterLinkAdminAction(
                 issueCodes: blockingIssues.map((issue) => issue.code),
               };
             }
-            if (report.status !== 'active') {
+            if (action.action !== 'reactivate' && report.status !== 'active') {
               return { kind: 'inactive' as const };
+            }
+            if (action.action === 'reactivate' && report.status === 'active') {
+              return { kind: 'already-active' as const };
             }
 
             // Das Schema hat kein Active-Flag. Daher ist die aktuelle Player-
@@ -175,7 +193,7 @@ export async function executeEncounterLinkAdminAction(
 
             const occupied = await tx.encounter.findFirst({
               where: {
-                teamSlot: action.teamSlot,
+                teamSlot: targetTeamSlot,
                 routeId: { not: routeId },
               },
               select: {
@@ -183,13 +201,20 @@ export async function executeEncounterLinkAdminAction(
                 route: { select: { name: true } },
               },
             });
-            if (occupied) {
+            if (occupied && action.action !== 'take-team-slot') {
               return {
                 kind: 'slot-conflict' as const,
                 routeId: occupied.routeId,
                 routeName: occupied.route.name,
-                teamSlot: action.teamSlot,
+                teamSlot: targetTeamSlot,
               };
+            }
+            if (occupied) {
+              displacedRouteId = occupied.routeId;
+              await tx.encounter.updateMany({
+                where: { routeId: occupied.routeId },
+                data: { teamSlot: previousTeamSlot ?? null },
+              });
             }
           }
 
@@ -202,11 +227,19 @@ export async function executeEncounterLinkAdminAction(
             include: encounterAdminInclude,
             orderBy: { id: 'asc' },
           });
+          const displaced = displacedRouteId === null
+            ? []
+            : await tx.encounter.findMany({
+                where: { routeId: displacedRouteId },
+                include: encounterAdminInclude,
+                orderBy: { id: 'asc' },
+              });
           await bumpLiveRevisions(tx, ['encounters']);
           return {
             kind: 'updated' as const,
             count: updated.count,
             encounters,
+            displaced,
             wasCompletelyOutsideTeam,
             wasAtLeastPartlyInTeam,
             previousTeamSlot,
@@ -232,6 +265,13 @@ export async function executeEncounterLinkAdminAction(
           error: 'K.O. oder nicht gefangene Routen-Links müssen zuerst reaktiviert werden',
         };
       }
+      if (result.kind === 'already-active') {
+        return {
+          ok: false,
+          status: 409,
+          error: 'Die Route ist bereits aktiv. Ihr Teamplatz wurde nicht geändert.',
+        };
+      }
       if (result.kind === 'incomplete') {
         return {
           ok: false,
@@ -251,7 +291,7 @@ export async function executeEncounterLinkAdminAction(
         encounters:
           result.kind === 'deleted'
             ? []
-            : result.encounters.map(serializeEncounterAdminTarget),
+            : [...result.encounters, ...result.displaced].map(serializeEncounterAdminTarget),
       };
 
       if (
@@ -265,9 +305,23 @@ export async function executeEncounterLinkAdminAction(
         );
       }
 
+      // Beim Tausch bleiben beide Routen im Team; nur eine verdrängte Route geht in die Box.
       if (
         result.kind === 'updated' &&
-        action.action === 'set-team-slot' &&
+        action.action === 'take-team-slot' &&
+        result.displaced.length > 0 &&
+        result.previousTeamSlot === undefined
+      ) {
+        emitEvent('team_link_boxed', {
+          routeName: result.displaced[0].route.name,
+          teamSlot: action.teamSlot,
+          teamMembers: teamMembersForEvent(result.displaced),
+        });
+      }
+
+      if (
+        result.kind === 'updated' &&
+        (action.action === 'set-team-slot' || action.action === 'take-team-slot') &&
         action.teamSlot !== null &&
         result.wasCompletelyOutsideTeam
       ) {

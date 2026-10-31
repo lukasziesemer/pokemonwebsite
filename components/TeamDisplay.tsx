@@ -17,7 +17,11 @@ import EncounterActionMenu, {
 import RouteLinkActionMenu, {
   type RouteLinkActionMenuTarget,
 } from './admin/RouteLinkActionMenu';
-import { getOccupiedTeamSlots, getTeamSlotRouteOptions } from './admin/route-link-ui';
+import {
+  getOccupiedTeamSlots,
+  getTeamSlotRouteOptions,
+  type RouteStatusChange,
+} from './admin/route-link-ui';
 import { useSpriteMode } from '@/lib/contexts/SpriteContext';
 import { calculateAverageStats, countPlayerStats, createTeamSlots } from '@/lib/team-utils';
 import { parseTypes } from '@/lib/typeEffectiveness';
@@ -172,6 +176,7 @@ interface TeamDisplayProps {
   isAdmin?: boolean;
   gameVersionKey?: string | null;
   onUpdated?: () => void | Promise<void>;
+  onStatusSet?: (change: RouteStatusChange) => void;
   pokemon?: PokemonListItem[];
 }
 
@@ -185,6 +190,7 @@ export default function TeamDisplay({
   isAdmin = false,
   gameVersionKey = null,
   onUpdated,
+  onStatusSet,
   pokemon = [],
 }: TeamDisplayProps) {
   const { spriteMode } = useSpriteMode();
@@ -363,6 +369,7 @@ export default function TeamDisplay({
                           className="mt-1 w-full [&>button]:w-full [&>button]:justify-center"
                           onUpdated={() => { void onUpdated?.(); }}
                           onDeleted={() => { void onUpdated?.(); }}
+                          onStatusSet={onStatusSet}
                         />
                       ) : null}
                     </div>
