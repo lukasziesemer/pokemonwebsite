@@ -34,6 +34,8 @@ export type EncounterActionMenuTarget = EncounterAdminTarget;
 interface EncounterActionMenuProps {
   encounter: EncounterAdminTarget;
   pokemonOptions?: PokemonListItem[];
+  /** Die Tabelle lädt die Auswahl erst bei Bedarf; das Menü bleibt dabei vollständig. */
+  pokemonOptionsLoading?: boolean;
   onUpdated?: (encounter: EncounterAdminTarget) => void;
   onDeleted?: (encounterId: number) => void;
   onError?: (message: string) => void;
@@ -80,6 +82,7 @@ function pokemonDisplayName(encounter: EncounterAdminTarget) {
 export default function EncounterActionMenu({
   encounter,
   pokemonOptions = [],
+  pokemonOptionsLoading = false,
   onUpdated,
   onDeleted,
   onError,
@@ -294,9 +297,19 @@ export default function EncounterActionMenu({
   const canConfirm =
     !busy &&
     (dialogAction === 'delete' ||
-      dialogAction === 'update-nickname' ||
+      (dialogAction === 'update-nickname' && nickname.trim() !== (encounter.nickname ?? '')) ||
       (dialogAction === 'evolution' && selectedEvolutionId !== null) ||
-      (dialogAction === 'swap-pokemon' && selectedPokemonId !== null));
+      (dialogAction === 'swap-pokemon' &&
+        selectedPokemonId !== null &&
+        selectedPokemonId !== encounter.pokemon.id));
+
+  // Enter wählt zuerst den besten Treffer; erst das nächste Enter bestätigt.
+  const handlePokemonSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const firstHit = filteredPokemon[0];
+    if (event.key !== 'Enter' || !firstHit || selectedPokemonId === firstHit.id) return;
+    event.preventDefault();
+    setSelectedPokemonId(firstHit.id);
+  };
 
   const dialogCopy: Record<Exclude<DialogAction, null>, { title: string; description: string; confirm: string; danger?: boolean }> = {
     'swap-pokemon': {
@@ -368,9 +381,7 @@ export default function EncounterActionMenu({
               style={{ top: menuPosition.top, left: menuPosition.left }}
               className="fixed z-[9998] w-60 overflow-hidden border border-[var(--border-default)] bg-[var(--card-bg-elevated)] p-1.5 text-[var(--foreground)] shadow-lg"
             >
-              {pokemonOptions.length > 0 ? (
-                <MenuButton onClick={() => openDialog('swap-pokemon')}>Pokémon tauschen</MenuButton>
-              ) : null}
+              <MenuButton onClick={() => openDialog('swap-pokemon')}>Pokémon tauschen</MenuButton>
               <MenuButton onClick={() => openDialog('update-nickname')}>Spitzname bearbeiten</MenuButton>
               <MenuButton onClick={() => openDialog('evolution')}>Entwicklung ändern</MenuButton>
               {scope === 'repair' ? (
@@ -396,14 +407,16 @@ export default function EncounterActionMenu({
           description={copy.description}
           onClose={closeDialog}
           busy={busy}
+          onSubmit={() => {
+            if (canConfirm) confirmAction();
+          }}
           actions={
             <>
               <button type="button" onClick={closeDialog} disabled={busy} className={secondaryButtonClasses}>
                 Abbrechen
               </button>
               <button
-                type="button"
-                onClick={confirmAction}
+                type="submit"
                 disabled={!canConfirm}
                 className={`${primaryButtonClasses} ${copy.danger ? 'bg-red-600 hover:bg-red-700' : ''}`}
               >
@@ -420,6 +433,8 @@ export default function EncounterActionMenu({
                   type="search"
                   value={pokemonSearch}
                   onChange={(event) => setPokemonSearch(event.target.value)}
+                  onKeyDown={handlePokemonSearchKeyDown}
+                  data-autofocus
                   placeholder="Name oder Pokédex-Nummer"
                   disabled={busy}
                   className={inputClasses}
@@ -445,7 +460,9 @@ export default function EncounterActionMenu({
                   </button>
                 ))}
                 {filteredPokemon.length === 0 ? (
-                  <p className="px-3 py-4 text-center text-sm text-[var(--text-secondary)]">Kein Pokémon gefunden</p>
+                  <p role="status" className="px-3 py-4 text-center text-sm text-[var(--text-secondary)]">
+                    {pokemonOptionsLoading ? 'Pokémon-Auswahl wird geladen…' : 'Kein Pokémon gefunden'}
+                  </p>
                 ) : null}
               </div>
             </>
@@ -457,6 +474,7 @@ export default function EncounterActionMenu({
                 id={`nickname-${encounter.id}`}
                 value={nickname}
                 onChange={(event) => setNickname(event.target.value)}
+                data-autofocus
                 maxLength={60}
                 placeholder="Leer lassen, um den Spitznamen zu entfernen"
                 disabled={busy}

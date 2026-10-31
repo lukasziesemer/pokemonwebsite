@@ -1,5 +1,9 @@
 import type { EncounterAdminTarget } from '@/lib/encounter-admin';
 
+export const TEAM_SLOTS = [1, 2, 3, 4, 5, 6] as const;
+
+export type OccupiedTeamSlots = Record<number, { routeId: number; routeName: string }>;
+
 export interface EncounterRouteLinkTarget {
   route: {
     id: number;
@@ -8,6 +12,8 @@ export interface EncounterRouteLinkTarget {
   encounters: EncounterAdminTarget[];
   /** Number of players expected to have one encounter on this route. */
   expectedPlayerCount?: number;
+  /** Belegung aller Teamplätze, damit die Auswahl Konflikte vorab zeigt. */
+  occupiedTeamSlots?: OccupiedTeamSlots;
 }
 
 export interface EncounterRouteLinkState {
@@ -62,7 +68,7 @@ export function getEncounterRouteLinkState(
 
   const blockedReasons: string[] = [];
   if (link.encounters.length === 0) {
-    blockedReasons.push('Für diesen Link sind noch keine Pokémon erfasst.');
+    blockedReasons.push('Für diese Route sind noch keine Pokémon erfasst.');
   }
   if (missingPlayerCount > 0) {
     blockedReasons.push(
@@ -76,7 +82,7 @@ export function getEncounterRouteLinkState(
     blockedReasons.push('Die Pokémon besitzen unterschiedliche Teamplätze.');
   }
   if (!allActive && !isStatusMixed && link.encounters.length > 0) {
-    blockedReasons.push('K.O. oder nicht gefangene Links müssen zuerst reaktiviert werden.');
+    blockedReasons.push('K.O. oder nicht gefangene Routen müssen zuerst reaktiviert werden.');
   }
 
   return {
@@ -96,6 +102,72 @@ export function getEncounterRouteLinkState(
       !isStatusMixed,
     blockedReasons,
   };
+}
+
+export function getOccupiedTeamSlots(
+  routes: { id: number; name: string; encounters: { teamSlot: number | null }[] }[],
+): OccupiedTeamSlots {
+  const occupied: OccupiedTeamSlots = {};
+  for (const route of routes) {
+    for (const { teamSlot } of route.encounters) {
+      if (teamSlot !== null) {
+        occupied[teamSlot] = { routeId: route.id, routeName: route.name };
+      }
+    }
+  }
+  return occupied;
+}
+
+export function getFirstFreeTeamSlot(occupied: OccupiedTeamSlots): number | null {
+  return TEAM_SLOTS.find((slot) => !occupied[slot]) ?? null;
+}
+
+/** Platz für „Ins Team“; null, wenn die Route nicht aufgenommen werden kann oder das Team voll ist. */
+export function getNextTeamSlot(link: EncounterRouteLinkTarget): number | null {
+  const state = getEncounterRouteLinkState(link);
+  if (!state.canAssignToTeam || state.teamSlot !== null) return null;
+  return getFirstFreeTeamSlot(link.occupiedTeamSlots ?? {});
+}
+
+export function describeTeamSlot(
+  slot: number,
+  link: EncounterRouteLinkTarget,
+  canAssignToTeam: boolean,
+) {
+  const occupant = link.occupiedTeamSlots?.[slot];
+  const occupiedByOtherRoute = Boolean(occupant) && occupant?.routeId !== link.route.id;
+  const suffix = occupant ? ` · ${occupant.routeName}` : link.occupiedTeamSlots ? ' · frei' : '';
+
+  return {
+    label: `Platz ${slot}${suffix}`,
+    disabled: !canAssignToTeam || occupiedByOtherRoute,
+  };
+}
+
+export function getTeamSlotRouteOptions(
+  links: EncounterRouteLinkTarget[],
+  playerId: number,
+  playerName: string,
+) {
+  return links
+    .map((link) => {
+      const state = getEncounterRouteLinkState(link);
+      const playerEncounter = link.encounters.find(
+        (encounter) => encounter.player.id === playerId,
+      );
+      const isAlreadyInTeam = playerEncounter !== undefined && playerEncounter.teamSlot !== null;
+      const canAssign = Boolean(playerEncounter) && state.canAssignToTeam;
+      const disabledReason = !playerEncounter
+        ? `${playerName} fehlt auf dieser Route`
+        : !state.isComplete
+          ? 'Unvollständig'
+          : !state.allActive
+            ? 'Route muss zuerst reaktiviert werden'
+            : null;
+
+      return { link, state, canAssign, disabledReason, isAlreadyInTeam };
+    })
+    .filter((option) => !option.isAlreadyInTeam);
 }
 
 export function pokemonDisplayName(encounter: EncounterAdminTarget) {

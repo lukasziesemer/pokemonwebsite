@@ -18,15 +18,29 @@ import {
 } from '@/lib/encounter-link-admin';
 import EncounterAdminDialog from './EncounterAdminDialog';
 import {
+  describeTeamSlot,
   getEncounterRouteLinkState,
+  getFirstFreeTeamSlot,
   pokemonDisplayName,
+  TEAM_SLOTS,
   type EncounterRouteLinkTarget,
 } from './route-link-ui';
 
 export type RouteLinkActionMenuTarget = EncounterRouteLinkTarget;
 
+/** Pflege der Route selbst; nur dort gesetzt, wo Routen bearbeitet werden. */
+export interface RouteEditActions {
+  onRename: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDelete: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}
+
 interface RouteLinkActionMenuProps {
   link: EncounterRouteLinkTarget;
+  routeActions?: RouteEditActions;
   onUpdated?: (encounters: EncounterAdminTarget[]) => void;
   onDeleted?: (routeId: number) => void;
   onError?: (message: string) => void;
@@ -47,10 +61,11 @@ const primaryButtonClasses =
 
 export default function RouteLinkActionMenu({
   link,
+  routeActions,
   onUpdated,
   onDeleted,
   onError,
-  triggerLabel = 'Link/Route verwalten',
+  triggerLabel = 'Route verwalten',
   compact = false,
   disabled = false,
   className = '',
@@ -84,18 +99,23 @@ export default function RouteLinkActionMenu({
   // Vollständigkeit ist nur für eine Teamplatz-Zuweisung relevant. Status-
   // und Löschaktionen gelten bewusst für alle aktuell vorhandenen Mitglieder;
   // später angelegte Encounters erben den Linkstatus serverseitig.
-  const canChangeGroupStatus = state.memberCount > 0;
+  const hasMembers = state.memberCount > 0;
+  const firstFreeSlot = link.occupiedTeamSlots
+    ? getFirstFreeTeamSlot(link.occupiedTeamSlots)
+    : null;
 
   const resetForm = useCallback((action: Exclude<DialogAction, null>) => {
     setError(null);
-    setCausedBy('');
+    setCausedBy(playerOptions.length === 1 ? playerOptions[0].name : '');
     setReason('');
-    setTeamSlot(
-      action === 'remove-from-team' || state.teamSlot === 'mixed'
-        ? 'none'
-        : String(state.teamSlot ?? 'none'),
-    );
-  }, [state.teamSlot]);
+    if (action === 'remove-from-team' || state.teamSlot === 'mixed') {
+      setTeamSlot('none');
+    } else if (state.teamSlot !== null) {
+      setTeamSlot(String(state.teamSlot));
+    } else {
+      setTeamSlot(state.canAssignToTeam && firstFreeSlot ? String(firstFreeSlot) : 'none');
+    }
+  }, [firstFreeSlot, playerOptions, state.canAssignToTeam, state.teamSlot]);
 
   const openDialog = useCallback((action: Exclude<DialogAction, null>) => {
     resetForm(action);
@@ -192,6 +212,11 @@ export default function RouteLinkActionMenu({
     }
   };
 
+  const runRouteAction = (action: () => void) => {
+    setMenuOpen(false);
+    action();
+  };
+
   const submit = async (action: EncounterLinkAdminAction) => {
     setBusy(true);
     setError(null);
@@ -207,7 +232,7 @@ export default function RouteLinkActionMenu({
       const message =
         submitError instanceof Error
           ? submitError.message
-          : 'Link konnte nicht geändert werden';
+          : 'Route konnte nicht geändert werden';
       setError(message);
       onError?.(message);
     } finally {
@@ -258,36 +283,36 @@ export default function RouteLinkActionMenu({
     { title: string; description: string; confirm: string; danger?: boolean }
   > = {
     'set-team-slot': {
-      title: 'Link-Teamplatz verwalten',
-      description: `${link.route.name}: Der Teamplatz gilt für alle erfassten Spieler-Pokémon dieses Links.`,
+      title: 'Teamplatz verwalten',
+      description: `${link.route.name}: Der Teamplatz gilt für alle erfassten Pokémon dieser Route.`,
       confirm: 'Teamplatz speichern',
     },
     'remove-from-team': {
-      title: 'Link aus dem Team entfernen',
+      title: 'Route aus dem Team entfernen',
       description: `${link.route.name}: Alle betroffenen Pokémon verlieren ihren Teamplatz.`,
       confirm: 'Aus Team entfernen',
     },
     knockout: {
-      title: 'Link K.O. setzen',
+      title: 'K.O. setzen',
       description: `${link.route.name}: Alle betroffenen Pokémon werden K.O. gesetzt und aus dem Team entfernt.`,
-      confirm: 'Link K.O. setzen',
+      confirm: 'K.O. setzen',
       danger: true,
     },
     'not-caught': {
-      title: 'Link als nicht gefangen markieren',
+      title: 'Als nicht gefangen markieren',
       description: `${link.route.name}: Alle betroffenen Pokémon erhalten diesen Status und werden aus dem Team entfernt.`,
-      confirm: 'Link nicht gefangen',
+      confirm: 'Nicht gefangen markieren',
       danger: true,
     },
     reactivate: {
-      title: 'Link reaktivieren',
+      title: 'Route reaktivieren',
       description: `${link.route.name}: K.O.- und Nicht-gefangen-Metadaten werden für alle betroffenen Pokémon entfernt. Ein Teamplatz wird nicht wiederhergestellt.`,
-      confirm: 'Link reaktivieren',
+      confirm: 'Reaktivieren',
     },
     'delete-link': {
-      title: 'Kompletten Link löschen',
-      description: `${link.route.name}: Alle ${state.memberCount} Encounter-Zuordnungen dieses Links werden gelöscht. Die Route bleibt bestehen.`,
-      confirm: 'Link löschen',
+      title: 'Alle Pokémon der Route löschen',
+      description: `${link.route.name}: Alle ${state.memberCount} erfassten Pokémon werden gelöscht. Die Route bleibt bestehen.`,
+      confirm: 'Pokémon löschen',
       danger: true,
     },
   };
@@ -298,11 +323,11 @@ export default function RouteLinkActionMenu({
       <button
         ref={triggerRef}
         type="button"
-        disabled={disabled || state.memberCount === 0}
+        disabled={disabled || (!hasMembers && !routeActions)}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
-        aria-label={compact ? `${link.route.name}: Link/Route verwalten` : undefined}
+        aria-label={compact ? `${link.route.name}: Route verwalten` : undefined}
         onClick={() => setMenuOpen((open) => !open)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
@@ -326,51 +351,73 @@ export default function RouteLinkActionMenu({
               id={menuId}
               ref={menuRef}
               role="menu"
-              aria-label={`${link.route.name}: Link/Route verwalten`}
+              aria-label={`${link.route.name}: Route verwalten`}
               onKeyDown={handleMenuKeyDown}
               style={{ top: menuPosition.top, left: menuPosition.left }}
-              className="fixed z-[9998] w-[260px] overflow-hidden border border-[var(--border-default)] bg-[var(--card-bg-elevated)] p-1.5 text-[var(--foreground)] shadow-lg"
+              className="fixed z-[9998] max-h-[calc(100dvh-1rem)] w-[260px] overflow-y-auto border border-[var(--border-default)] bg-[var(--card-bg-elevated)] p-1.5 text-[var(--foreground)] shadow-lg"
             >
               <div className="border-b border-[var(--border-default)] px-3 py-2">
                 <p className="truncate text-sm font-bold">{link.route.name}</p>
-                <p className="text-xs text-[var(--text-secondary)]">
-                  {state.memberCount} Pokémon betroffen
-                </p>
+                {hasMembers ? (
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    {state.memberCount} Pokémon betroffen
+                  </p>
+                ) : null}
               </div>
-              <MenuButton
-                onClick={() => openDialog('set-team-slot')}
-                disabled={state.memberCount === 0}
-              >
-                Teamplatz verwalten
-              </MenuButton>
-              {state.teamSlot !== null ? (
-                <MenuButton onClick={() => openDialog('remove-from-team')}>
-                  Link aus Team entfernen
-                </MenuButton>
+              {hasMembers ? (
+                <>
+                  <MenuButton onClick={() => openDialog('set-team-slot')}>
+                    Teamplatz verwalten
+                  </MenuButton>
+                  {state.teamSlot !== null ? (
+                    <MenuButton onClick={() => openDialog('remove-from-team')}>
+                      Aus Team entfernen
+                    </MenuButton>
+                  ) : null}
+                  <MenuButton onClick={() => openDialog('knockout')}>
+                    K.O. setzen
+                  </MenuButton>
+                  <MenuButton onClick={() => openDialog('not-caught')}>
+                    Nicht gefangen
+                  </MenuButton>
+                  {state.hasInactiveMembers ? (
+                    <MenuButton onClick={() => openDialog('reactivate')}>
+                      Reaktivieren
+                    </MenuButton>
+                  ) : null}
+                </>
               ) : null}
-              <MenuButton
-                onClick={() => openDialog('knockout')}
-                disabled={!canChangeGroupStatus}
-                locked={!canChangeGroupStatus}
-              >
-                Link K.O. setzen
-              </MenuButton>
-              <MenuButton
-                onClick={() => openDialog('not-caught')}
-                disabled={!canChangeGroupStatus}
-                locked={!canChangeGroupStatus}
-              >
-                Link nicht gefangen
-              </MenuButton>
-              {state.hasInactiveMembers ? (
-                <MenuButton onClick={() => openDialog('reactivate')}>
-                  Link reaktivieren
-                </MenuButton>
+              {routeActions ? (
+                <>
+                  {hasMembers ? <div className="my-1 border-t border-[var(--border-default)]" /> : null}
+                  <MenuButton onClick={() => runRouteAction(routeActions.onRename)}>
+                    Route umbenennen
+                  </MenuButton>
+                  <MenuButton
+                    onClick={() => runRouteAction(routeActions.onMoveUp)}
+                    disabled={!routeActions.canMoveUp}
+                  >
+                    Nach oben verschieben
+                  </MenuButton>
+                  <MenuButton
+                    onClick={() => runRouteAction(routeActions.onMoveDown)}
+                    disabled={!routeActions.canMoveDown}
+                  >
+                    Nach unten verschieben
+                  </MenuButton>
+                </>
               ) : null}
               <div className="my-1 border-t border-[var(--border-default)]" />
-              <MenuButton onClick={() => openDialog('delete-link')} danger>
-                Kompletten Link löschen
-              </MenuButton>
+              {hasMembers ? (
+                <MenuButton onClick={() => openDialog('delete-link')} danger>
+                  Alle Pokémon der Route löschen
+                </MenuButton>
+              ) : null}
+              {routeActions ? (
+                <MenuButton onClick={() => runRouteAction(routeActions.onDelete)} danger>
+                  Route löschen
+                </MenuButton>
+              ) : null}
             </div>,
             document.body,
           )
@@ -383,14 +430,16 @@ export default function RouteLinkActionMenu({
           description={copy.description}
           onClose={closeDialog}
           busy={busy}
+          onSubmit={() => {
+            if (canConfirm) confirmAction();
+          }}
           actions={
             <>
               <button type="button" onClick={closeDialog} disabled={busy} className={secondaryButtonClasses}>
                 Abbrechen
               </button>
               <button
-                type="button"
-                onClick={confirmAction}
+                type="submit"
                 disabled={!canConfirm}
                 className={`${primaryButtonClasses} ${copy.danger ? 'bg-red-600 hover:bg-red-700' : ''}`}
               >
@@ -403,7 +452,7 @@ export default function RouteLinkActionMenu({
 
           {dialogAction === 'set-team-slot' && state.blockedReasons.length > 0 ? (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-              <p className="font-semibold">Hinweise zum Link</p>
+              <p className="font-semibold">Hinweise zur Route</p>
               <ul className="mt-1 list-disc space-y-1 pl-5">
                 {state.blockedReasons.map((blockedReason) => (
                   <li key={blockedReason}>{blockedReason}</li>
@@ -414,7 +463,7 @@ export default function RouteLinkActionMenu({
 
           {dialogAction === 'set-team-slot' ? (
             <label className="grid gap-1.5 text-sm font-semibold text-[var(--foreground)]">
-              Teamplatz für den kompletten Link
+              Teamplatz für alle Pokémon der Route
               <select
                 value={teamSlot}
                 onChange={(event) => setTeamSlot(event.target.value)}
@@ -422,15 +471,23 @@ export default function RouteLinkActionMenu({
                 className={inputClasses}
               >
                 <option value="none">Nicht im Team</option>
-                {[1, 2, 3, 4, 5, 6].map((slot) => (
-                  <option key={slot} value={slot} disabled={!state.canAssignToTeam}>
-                    Platz {slot}
-                  </option>
-                ))}
+                {TEAM_SLOTS.map((slot) => {
+                  const { label, disabled: slotDisabled } = describeTeamSlot(slot, link, state.canAssignToTeam);
+                  return (
+                    <option key={slot} value={slot} disabled={slotDisabled}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
+              {state.canAssignToTeam && link.occupiedTeamSlots && !firstFreeSlot && state.teamSlot === null ? (
+                <span className="text-xs font-normal text-[var(--text-secondary)]">
+                  Das Team ist voll. Gib zuerst einen Platz frei.
+                </span>
+              ) : null}
               {!state.canAssignToTeam ? (
                 <span className="text-xs font-normal text-[var(--text-secondary)]">
-                  Ein Teamplatz ist erst möglich, wenn der Link vollständig, aktiv und konsistent ist. „Nicht im Team“ bleibt als Reparatur verfügbar.
+                  Ein Teamplatz ist erst möglich, wenn für jeden Spieler ein aktives Pokémon erfasst ist. „Nicht im Team“ bleibt als Reparatur verfügbar.
                 </span>
               ) : null}
             </label>
@@ -438,27 +495,30 @@ export default function RouteLinkActionMenu({
 
           {dialogAction === 'knockout' || dialogAction === 'not-caught' ? (
             <>
-              <label className="grid gap-1.5 text-sm font-semibold text-[var(--foreground)]">
-                Verursacher
-                <select
-                  value={causedBy}
-                  onChange={(event) => setCausedBy(event.target.value)}
-                  disabled={busy}
-                  className={inputClasses}
-                >
-                  <option value="" disabled>
-                    Spieler auswählen
-                  </option>
+              <fieldset className="grid gap-1.5 text-sm font-semibold text-[var(--foreground)]" disabled={busy}>
+                <legend className="mb-1.5">Verursacher</legend>
+                <div className="grid grid-cols-2 gap-2">
                   {playerOptions.map((player) => (
-                    <option key={player.id} value={player.name}>
+                    <button
+                      key={player.id}
+                      type="button"
+                      aria-pressed={causedBy === player.name}
+                      onClick={() => setCausedBy(player.name)}
+                      className={`min-h-11 truncate border px-3 py-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-blue)] disabled:opacity-50 ${
+                        causedBy === player.name
+                          ? 'border-[var(--brand-navy)] bg-[var(--brand-navy)] text-white'
+                          : 'border-[var(--border-default)] bg-[var(--background-secondary)] text-[var(--foreground)] hover:border-[var(--brand-navy)]'
+                      }`}
+                    >
                       {player.name}
-                    </option>
+                    </button>
                   ))}
-                </select>
-              </label>
-              <label className="grid gap-1.5 text-sm font-semibold text-[var(--foreground)]">
-                Grund (optional)
+                </div>
+              </fieldset>
+              <details className="text-sm font-semibold text-[var(--foreground)]">
+                <summary className="min-h-11 cursor-pointer py-2">Grund hinzufügen (optional)</summary>
                 <textarea
+                  aria-label="Grund"
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   maxLength={240}
@@ -466,13 +526,13 @@ export default function RouteLinkActionMenu({
                   disabled={busy}
                   className={inputClasses}
                 />
-              </label>
+              </details>
             </>
           ) : null}
 
           {dialogAction === 'delete-link' ? (
             <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-200">
-              Diese Aktion kann nicht rückgängig gemacht werden. Es wird kein einzelnes Pokémon, sondern der komplette Encounter-Link dieser Route gelöscht.
+              Diese Aktion kann nicht rückgängig gemacht werden. Es werden die Pokémon aller Spieler auf dieser Route gelöscht.
             </p>
           ) : null}
 
@@ -520,7 +580,7 @@ function AffectedPokemon({ link }: { link: EncounterRouteLinkTarget }) {
                   : encounter.isNotCaught
                     ? 'Nicht gefangen'
                     : encounter.teamSlot !== null
-                      ? `Slot ${encounter.teamSlot}`
+                      ? `Platz ${encounter.teamSlot}`
                       : 'Aktiv'}
               </span>
             </li>
@@ -536,13 +596,11 @@ function MenuButton({
   onClick,
   danger = false,
   disabled = false,
-  locked = false,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
-  locked?: boolean;
 }) {
   return (
     <button
@@ -550,18 +608,13 @@ function MenuButton({
       role="menuitem"
       onClick={onClick}
       disabled={disabled}
-      className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`flex min-h-11 w-full items-center rounded-lg px-3 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${
         danger
           ? 'text-red-700 hover:bg-red-500/10 dark:text-red-300'
           : 'text-[var(--foreground)] hover:bg-[var(--background-tertiary)]'
       }`}
     >
-      <span>{children}</span>
-      {locked ? (
-        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">
-          Gesperrt
-        </span>
-      ) : null}
+      {children}
     </button>
   );
 }

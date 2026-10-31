@@ -6,15 +6,22 @@
 
 'use client';
 
-import { useState, useRef, useEffect, memo } from 'react';
+import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import Link from 'next/link';
 import PokemonCard from './PokemonCard';
 import EncounterActionMenu from './admin/EncounterActionMenu';
 import RouteLinkActionMenu from './admin/RouteLinkActionMenu';
+import {
+  getEncounterRouteLinkState,
+  getNextTeamSlot,
+  getOccupiedTeamSlots,
+  type EncounterRouteLinkTarget,
+} from './admin/route-link-ui';
 import { PokemonDetailsTrigger } from './pokemon-details';
 import PlayerAvatar from './PlayerAvatar';
 import { calculateAverageStats, filterPokemonBySearch } from '@/lib/team-utils';
 import { fetchJson } from '@/lib/fetchJson';
+import { mutateEncounterLink } from '@/lib/encounter-link-admin';
 import { getErrorMessage } from '@/lib/component-utils';
 import { buildPokeradarHref } from '@/lib/pokeradar-team-data';
 import { parseTypes } from '@/lib/typeEffectiveness';
@@ -80,6 +87,8 @@ interface RouteListProps {
   gameVersionKey?: string | null;
   onTeamUpdate?: () => void;
   pokemon?: PokemonListItem[];
+  /** Neu angelegte Route: wird angesteuert, damit die Erfassung direkt weitergeht. */
+  focusRouteId?: number | null;
 }
 
 // =============================================================================
@@ -89,10 +98,8 @@ interface RouteListProps {
 interface EditableRouteNameProps {
   route: Route;
   isInactive: boolean;
-  isAdmin: boolean;
   isEditing: boolean;
   editValue: string;
-  onEditStart: () => void;
   onEditChange: (value: string) => void;
   onEditSave: () => void;
   onEditCancel: () => void;
@@ -102,10 +109,8 @@ interface EditableRouteNameProps {
 function EditableRouteName({
   route,
   isInactive,
-  isAdmin,
   isEditing,
   editValue,
-  onEditStart,
   onEditChange,
   onEditSave,
   onEditCancel,
@@ -146,22 +151,9 @@ function EditableRouteName({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <h3 className={`text-lg font-black uppercase leading-tight ${isInactive ? 'text-[var(--text-tertiary)] line-through' : 'text-[var(--foreground)]'}`}>
-        {route.name}
-      </h3>
-      {isAdmin && (
-        <button
-          onClick={onEditStart}
-          className="p-1 text-[var(--text-tertiary)] hover:text-[var(--player-color)] transition opacity-0 group-hover:opacity-100"
-          title="Route umbenennen"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-          </svg>
-        </button>
-      )}
-    </div>
+    <h3 className={`text-lg font-black uppercase leading-tight ${isInactive ? 'text-[var(--text-tertiary)] line-through' : 'text-[var(--foreground)]'}`}>
+      {route.name}
+    </h3>
   );
 }
 
@@ -173,18 +165,12 @@ interface RouteHeaderProps {
   koInfo: EncounterWithMeta | null;
   notCaughtInfo: EncounterWithMeta | null;
   routeAverage: { total: number } | null;
-  isAdmin: boolean;
+  teamSlot: number | null;
   isEditing: boolean;
   editValue: string;
-  onEditStart: () => void;
   onEditChange: (value: string) => void;
   onEditSave: () => void;
   onEditCancel: () => void;
-  onDelete: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
   isProcessing: boolean;
 }
 
@@ -196,78 +182,37 @@ function RouteHeader({
   koInfo,
   notCaughtInfo,
   routeAverage,
-  isAdmin,
+  teamSlot,
   isEditing,
   editValue,
-  onEditStart,
   onEditChange,
   onEditSave,
   onEditCancel,
-  onDelete,
-  onMoveUp,
-  onMoveDown,
-  canMoveUp,
-  canMoveDown,
   isProcessing,
 }: RouteHeaderProps) {
   return (
-    <div className="group flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3">
       <span className="w-8 shrink-0 text-right text-sm font-black tabular-nums text-[var(--brand-red)]">
         {String(route.order).padStart(2, '0')}
       </span>
-      {/* Move Up/Down Buttons */}
-      {isAdmin && !isEditing && (
-        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition">
-          <button
-            onClick={onMoveUp}
-            disabled={isProcessing || !canMoveUp}
-            className="p-0.5 text-[var(--text-tertiary)] hover:text-blue-500 transition disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Nach oben verschieben"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-          </button>
-          <button
-            onClick={onMoveDown}
-            disabled={isProcessing || !canMoveDown}
-            className="p-0.5 text-[var(--text-tertiary)] hover:text-blue-500 transition disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Nach unten verschieben"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </div>
-      )}
 
       <EditableRouteName
         route={route}
         isInactive={isInactive}
-        isAdmin={isAdmin}
         isEditing={isEditing}
         editValue={editValue}
-        onEditStart={onEditStart}
         onEditChange={onEditChange}
         onEditSave={onEditSave}
         onEditCancel={onEditCancel}
         isProcessing={isProcessing}
       />
 
-      {/* Delete Button */}
-      {isAdmin && !isEditing && (
-        <button
-          onClick={onDelete}
-          disabled={isProcessing}
-          className="p-1 text-[var(--text-tertiary)] hover:text-red-500 transition opacity-0 group-hover:opacity-100 disabled:opacity-50"
-          title="Route loeschen"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+      {teamSlot !== null && (
+        <span className="app-status border-emerald-500 text-emerald-700 dark:text-emerald-300">
+          Im Team · Platz {teamSlot}
+        </span>
       )}
-      
+
       {isKnockedOut && koInfo && (
         <span className="app-status border-red-500 text-red-600">
           K.O. · {koInfo.koCausedBy}
@@ -396,6 +341,7 @@ const RouteList = memo(function RouteList({
   gameVersionKey = null,
   onTeamUpdate,
   pokemon = [],
+  focusRouteId = null,
 }: RouteListProps) {
   // State
   const [processing, setProcessing] = useState(false);
@@ -405,6 +351,14 @@ const RouteList = memo(function RouteList({
   // Route Edit State
   const [editingRouteId, setEditingRouteId] = useState<number | null>(null);
   const [editingRouteName, setEditingRouteName] = useState('');
+  const occupiedTeamSlots = useMemo(() => getOccupiedTeamSlots(routes), [routes]);
+
+  useEffect(() => {
+    if (focusRouteId === null) return;
+    const row = document.getElementById(`route-${focusRouteId}`);
+    row?.scrollIntoView({ block: 'center', behavior: 'instant' });
+    row?.querySelector('input')?.focus({ preventScroll: true });
+  }, [focusRouteId]);
 
   // ==========================================================================
   // Handler
@@ -425,6 +379,18 @@ const RouteList = memo(function RouteList({
       alert(`Fehler beim Hinzufuegen: ${getErrorMessage(error)}`);
     } finally {
       setAddingPokemon({ ...addingPokemon, [key]: false });
+    }
+  };
+
+  const handleAddToTeam = async (routeId: number, teamSlot: number) => {
+    setProcessing(true);
+    try {
+      await mutateEncounterLink(routeId, { action: 'set-team-slot', teamSlot });
+      await onTeamUpdate?.(); // Warte auf Daten-Reload
+    } catch (error) {
+      alert(`Fehler beim Hinzufügen zum Team: ${getErrorMessage(error)}`);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -525,7 +491,7 @@ const RouteList = memo(function RouteList({
     return (
       <div className="py-12 text-center">
         <p className="text-[var(--text-secondary)] text-lg">
-          Noch keine Routen vorhanden. Admin kann Routen im Admin-Panel hinzufuegen.
+          Noch keine Routen vorhanden.{isAdmin ? ' Lege oben die erste Route an.' : ''}
         </p>
       </div>
     );
@@ -534,7 +500,7 @@ const RouteList = memo(function RouteList({
   return (
     <>
       <div className="divide-y divide-[var(--border-default)] border-t border-[var(--border-default)]">
-        {routes.map((route) => {
+        {routes.map((route, routeIndex) => {
           const routeAverage = calculateAverageStats(route.encounters);
           const isKnockedOut = route.encounters.length > 0
             && route.encounters.every((encounter) => encounter.isKnockedOut);
@@ -545,12 +511,24 @@ const RouteList = memo(function RouteList({
           const notCaughtInfo = isNotCaught ? route.encounters[0] : null;
           const isEditingThisRoute = editingRouteId === route.id;
           const routeComparisonHref = buildRouteComparisonHref(route);
+          const link: EncounterRouteLinkTarget = {
+            route: { id: route.id, name: route.name },
+            encounters: route.encounters.map((encounter) =>
+              toEncounterAdminTarget(encounter, route),
+            ),
+            expectedPlayerCount: players.length,
+            occupiedTeamSlots,
+          };
+          const linkState = getEncounterRouteLinkState(link);
+          const canJoinTeam = linkState.canAssignToTeam && linkState.teamSlot === null;
+          const nextTeamSlot = getNextTeamSlot(link);
 
           const cardHeight = 'h-[202px]';
 
           return (
             <div
               key={route.id}
+              id={`route-${route.id}`}
               className={`route-list-row relative z-0 py-5 transition-colors hover:z-30 focus-within:z-30 ${isInactive ? 'bg-[var(--background-secondary)]/60' : ''}`}
             >
               {/* Header */}
@@ -563,48 +541,60 @@ const RouteList = memo(function RouteList({
                   koInfo={koInfo}
                   notCaughtInfo={notCaughtInfo}
                   routeAverage={routeAverage}
-                  isAdmin={isAdmin}
+                  teamSlot={typeof linkState.teamSlot === 'number' ? linkState.teamSlot : null}
                   isEditing={isEditingThisRoute}
                   editValue={editingRouteName}
-                  onEditStart={() => handleEditRouteStart(route)}
                   onEditChange={setEditingRouteName}
                   onEditSave={handleEditRouteSave}
                   onEditCancel={handleEditRouteCancel}
-                  onDelete={() => handleDeleteRoute(route.id, route.name)}
-                  onMoveUp={() => handleMoveRoute(route.id, 'up')}
-                  onMoveDown={() => handleMoveRoute(route.id, 'down')}
-                  canMoveUp={routes.findIndex(r => r.id === route.id) > 0}
-                  canMoveDown={routes.findIndex(r => r.id === route.id) < routes.length - 1}
                   isProcessing={processing}
                 />
 
-                {route.encounters.length > 0 && (
+                {route.encounters.length > 0 || isAdmin ? (
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <Link
-                      href={routeComparisonHref ?? '/pokeradar'}
-                      aria-label={`${route.name} im Vergleich öffnen`}
-                      className="app-action"
-                    >
-                      Im Vergleich öffnen
-                    </Link>
+                    {isAdmin && canJoinTeam ? (
+                      <button
+                        type="button"
+                        disabled={processing || nextTeamSlot === null}
+                        onClick={() => {
+                          if (nextTeamSlot !== null) void handleAddToTeam(route.id, nextTeamSlot);
+                        }}
+                        aria-label={nextTeamSlot !== null ? `${route.name} auf Platz ${nextTeamSlot} ins Team` : undefined}
+                        className="app-action-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {nextTeamSlot !== null ? 'Ins Team' : 'Team voll'}
+                      </button>
+                    ) : null}
+
+                    {route.encounters.length > 0 ? (
+                      <Link
+                        href={routeComparisonHref ?? '/pokeradar'}
+                        aria-label={`${route.name} im Vergleich öffnen`}
+                        className="app-action"
+                      >
+                        Im Vergleich öffnen
+                      </Link>
+                    ) : null}
 
                     {isAdmin ? (
                       <RouteLinkActionMenu
-                        link={{
-                          route: { id: route.id, name: route.name },
-                          encounters: route.encounters.map((encounter) =>
-                            toEncounterAdminTarget(encounter, route),
-                          ),
-                          expectedPlayerCount: players.length,
+                        link={link}
+                        routeActions={{
+                          onRename: () => handleEditRouteStart(route),
+                          onMoveUp: () => { void handleMoveRoute(route.id, 'up'); },
+                          onMoveDown: () => { void handleMoveRoute(route.id, 'down'); },
+                          onDelete: () => { void handleDeleteRoute(route.id, route.name); },
+                          canMoveUp: routeIndex > 0,
+                          canMoveDown: routeIndex < routes.length - 1,
                         }}
-                        triggerLabel="Link verwalten"
+                        triggerLabel="Route verwalten"
                         disabled={processing}
                         onUpdated={() => { void onTeamUpdate?.(); }}
                         onDeleted={() => { void onTeamUpdate?.(); }}
                       />
                     ) : null}
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Status-Info */}

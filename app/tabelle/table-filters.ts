@@ -9,6 +9,13 @@ export interface FilterableEncounterCell {
   };
 }
 
+export function compareRoutesByOrder(
+  left: { name: string; order: number },
+  right: { name: string; order: number },
+): number {
+  return left.order - right.order || left.name.localeCompare(right.name, 'de-DE');
+}
+
 export function encounterMatchesTableFilters(
   cell: FilterableEncounterCell,
   teamFilter: TeamFilter,

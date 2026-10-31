@@ -118,6 +118,7 @@ export default function PokerouteClient({
   const { isAdmin } = useAuth();
   const [newRouteName, setNewRouteName] = useState('');
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
+  const [createdRouteId, setCreatedRouteId] = useState<number | null>(null);
   const [loadedPokemon, setLoadedPokemon] = useState<Pokemon[]>([]);
   const [pokemonReloadToken, setPokemonReloadToken] = useState(0);
   const [syncedProps, setSyncedProps] = useState({ initialPlayers, initialRoutes });
@@ -189,7 +190,7 @@ export default function PokerouteClient({
         ? Math.max(...routes.map(r => r.order)) 
         : 0;
 
-      await fetchJson('/api/admin/routes', {
+      const createdRoute = await fetchJson<{ id: number }>('/api/admin/routes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -199,6 +200,7 @@ export default function PokerouteClient({
       });
       setNewRouteName('');
       await reloadData();
+      setCreatedRouteId(createdRoute.id);
     } catch (error: unknown) {
       alert(`Fehler beim Erstellen: ${getErrorMessage(error)}`);
     } finally {
@@ -221,7 +223,7 @@ export default function PokerouteClient({
         <AppPageTitle
           index="02"
           title="Routen"
-          description="Encounter-Links verwalten, Fänge erfassen und verbundene Pokémon gemeinsam aktualisieren."
+          description="Fänge erfassen, Teams aufstellen und die Pokémon einer Route gemeinsam aktualisieren."
         />
         <dl className="grid shrink-0 grid-cols-2 divide-x divide-[var(--border-default)] border-y border-[var(--border-default)] text-right">
           <div className="px-4 py-2">
@@ -265,6 +267,7 @@ export default function PokerouteClient({
                   playerColor={player.color}
                   teamMembers={player.encounters}
                   routes={routes}
+                  expectedPlayerCount={players.length}
                   isAdmin={isAdmin}
                   gameVersionKey={currentGameVersion?.key ?? null}
                   onUpdated={reloadData}
@@ -280,21 +283,13 @@ export default function PokerouteClient({
         <div className="mb-4 border-b-2 border-[var(--foreground)] pb-2">
           <h2 id="route-management-title" className="app-section-title">Routen &amp; Encounters</h2>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            Jede Zeile ist ein gemeinsamer Link. Änderungen am Status oder Teamplatz gelten für die ganze Gruppe.
+            Alle Pokémon einer Route teilen sich Teamplatz und Status. Änderungen gelten für alle Spieler.
           </p>
         </div>
 
         <div className="app-band">
-          <RouteList
-            routes={routes}
-            players={players}
-            isAdmin={isAdmin}
-            gameVersionKey={currentGameVersion?.key ?? null}
-            onTeamUpdate={reloadData}
-            pokemon={pokemon}
-          />
           {isAdmin ? (
-            <form onSubmit={handleCreateRoute} className="app-toolbar mt-4">
+            <form onSubmit={handleCreateRoute} className="app-toolbar mb-4">
               <label htmlFor="new-route-name" className="text-xs font-black uppercase tracking-widest text-[var(--text-secondary)]">Neue Route</label>
               <input
                 id="new-route-name"
@@ -310,6 +305,15 @@ export default function PokerouteClient({
               </button>
             </form>
           ) : null}
+          <RouteList
+            routes={routes}
+            players={players}
+            isAdmin={isAdmin}
+            gameVersionKey={currentGameVersion?.key ?? null}
+            onTeamUpdate={reloadData}
+            focusRouteId={createdRouteId}
+            pokemon={pokemon}
+          />
         </div>
       </section>
     </main>

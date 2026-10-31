@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  compareRoutesByOrder,
   encounterMatchesTableFilters,
   rowMatchesTableFilters,
   type FilterableEncounterCell,
@@ -39,5 +40,33 @@ describe('Encounter table filters', () => {
   it('keeps empty route rows only when no filters are active', () => {
     expect(rowMatchesTableFilters([null, null], 'all', 'all')).toBe(true);
     expect(rowMatchesTableFilters([null, null], 'all', 'active')).toBe(false);
+  });
+});
+
+describe('Routen-Sortierung', () => {
+  it('folgt der Routenreihenfolge statt dem Alphabet', () => {
+    const routes = [
+      { name: 'Route 21', order: 3 },
+      { name: 'Route 4', order: 1 },
+      { name: 'Route 19', order: 2 },
+    ];
+
+    expect([...routes].sort(compareRoutesByOrder).map((route) => route.name)).toEqual([
+      'Route 4',
+      'Route 19',
+      'Route 21',
+    ]);
+  });
+
+  it('nutzt bei gleicher Reihenfolge den Namen', () => {
+    const routes = [
+      { name: 'Route B', order: 0 },
+      { name: 'Route A', order: 0 },
+    ];
+
+    expect([...routes].sort(compareRoutesByOrder).map((route) => route.name)).toEqual([
+      'Route A',
+      'Route B',
+    ]);
   });
 });
