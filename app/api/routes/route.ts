@@ -19,6 +19,7 @@ export async function GET() {
             id: true,
             nickname: true,
             teamSlot: true,
+            lastTeamSlot: true,
             isKnockedOut: true,
             koCausedBy: true,
             koReason: true,

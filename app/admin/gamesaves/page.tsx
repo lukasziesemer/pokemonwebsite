@@ -50,18 +50,18 @@ export default function AdminGameSavesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [routeTemplates, setRouteTemplates] = useState<Record<string, number>>({});
   
   // Dialog States
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showEndRunDialog, setShowEndRunDialog] = useState(false);
-  const [showRestartRunDialog, setShowRestartRunDialog] = useState(false);
   const [showStartRunDialog, setShowStartRunDialog] = useState(false);
   
   // Form States
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [saveGameVersion, setSaveGameVersion] = useState('');
-  const [selectedLoser, setSelectedLoser] = useState('');
   const [newRunGameVersion, setNewRunGameVersion] = useState('');
   
   // Upload States
@@ -81,8 +81,9 @@ export default function AdminGameSavesPage() {
         fetch('/api/admin/game-versions'),
         fetch('/api/admin/runs'),
         fetch('/api/players'),
+        fetch('/api/admin/route-templates'),
       ])
-        .then(async ([savesRes, versionsRes, runsRes, playersRes]) => {
+        .then(async ([savesRes, versionsRes, runsRes, playersRes, templatesRes]) => {
           if (!savesRes.ok || !versionsRes.ok || !runsRes.ok) {
             throw new Error('Fehler beim Laden der Daten');
           }
@@ -97,6 +98,7 @@ export default function AdminGameSavesPage() {
           setActiveRun(runsJson.data?.activeRun || null);
           setHistoricalRuns(runsJson.data?.historicalRuns || []);
           setPlayers(playersJson || []);
+          setRouteTemplates(templatesRes.ok ? (await templatesRes.json()).data ?? {} : {});
         })
         .catch((error) => {
           setError(getErrorMessage(error));
@@ -110,6 +112,11 @@ export default function AdminGameSavesPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const openStartDialog = (gameVersionKey: string) => {
+    setNewRunGameVersion(gameVersionKey);
+    setShowStartRunDialog(true);
+  };
 
   // Run Management
   const handleStartRun = async () => {
@@ -131,12 +138,12 @@ export default function AdminGameSavesPage() {
       }
 
       const data = await res.json();
-      alert(data.data?.message || 'Neuer Run gestartet!');
+      setNotice({ kind: 'success', text: data.data?.message || 'Neuer Run gestartet!' });
       setShowStartRunDialog(false);
       setNewRunGameVersion('');
       fetchData();
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
@@ -167,15 +174,18 @@ export default function AdminGameSavesPage() {
         throw new Error(data.error || 'Fehler beim Beenden');
       }
 
-      alert(
-        outcome === 'completed'
+      setNotice({
+        kind: 'success',
+        text: outcome === 'completed'
           ? `Run #${activeRun.runNumber} wurde als Sieg gespeichert.`
           : `Run #${activeRun.runNumber} wurde als Niederlage gespeichert.`,
-      );
+      });
       setShowEndRunDialog(false);
       await fetchData();
+      // Der Abschluss führt direkt weiter, damit kein zweiter Weg gesucht werden muss.
+      openStartDialog(activeRun.gameVersion?.key ?? '');
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
@@ -200,45 +210,35 @@ export default function AdminGameSavesPage() {
         throw new Error(data.error || 'Fehler beim Rückgängigmachen');
       }
 
-      alert(data.data?.message || 'Run ist wieder aktiv.');
+      setNotice({ kind: 'success', text: data.data?.message || 'Run ist wieder aktiv.' });
       await fetchData();
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
   };
 
-  const handleRestartRun = async () => {
-    if (!selectedLoser) {
-      alert('Bitte wähle einen Verlierer aus');
-      return;
-    }
+  const handleSaveRouteTemplate = async () => {
+    if (!templateVersion) return;
 
     setProcessing(true);
     try {
-      const res = await fetch('/api/admin/runs/restart', {
+      const res = await fetch('/api/admin/route-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          loserPlayerName: selectedLoser,
-          gameVersionKey: newRunGameVersion || activeRun?.gameVersion?.key || null,
-        }),
+        body: JSON.stringify({ gameVersionKey: templateVersion.key }),
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Fehler beim Neustarten');
-      }
-
       const data = await res.json();
-      alert(data.data?.message || 'Run neu gestartet!');
-      setShowRestartRunDialog(false);
-      setSelectedLoser('');
-      setNewRunGameVersion('');
-      window.location.reload();
+      if (!res.ok) throw new Error(data.error || 'Fehler beim Speichern der Vorlage');
+
+      setNotice({
+        kind: 'success',
+        text: `${data.data.count} Routen als Vorlage für ${templateVersion.name} gespeichert.`,
+      });
+      await fetchData();
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
@@ -247,7 +247,7 @@ export default function AdminGameSavesPage() {
   // GameSave Management
   const handleSaveGame = async () => {
     if (!saveName.trim()) {
-      alert('Bitte gib einen Namen ein');
+      setNotice({ kind: 'error', text: 'Bitte gib einen Namen ein' });
       return;
     }
 
@@ -268,14 +268,14 @@ export default function AdminGameSavesPage() {
         throw new Error(data.error || 'Fehler beim Speichern');
       }
 
-      alert('Spielstand erfolgreich gespeichert!');
+      setNotice({ kind: 'success', text: 'Spielstand erfolgreich gespeichert!' });
       setShowSaveDialog(false);
       setSaveName('');
       setSaveDescription('');
       setSaveGameVersion('');
       fetchData();
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
@@ -300,10 +300,10 @@ export default function AdminGameSavesPage() {
       }
 
       const data = await res.json();
-      alert(data.message);
-      window.location.reload();
+      setNotice({ kind: 'success', text: data.message });
+      await fetchData();
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
@@ -319,10 +319,10 @@ export default function AdminGameSavesPage() {
         const data = await res.json();
         throw new Error(data.error || 'Fehler beim Löschen');
       }
-      alert('Spielstand gelöscht');
+      setNotice({ kind: 'success', text: 'Spielstand gelöscht' });
       fetchData();
     } catch (error) {
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      setNotice({ kind: 'error', text: `Fehler: ${getErrorMessage(error)}` });
     } finally {
       setProcessing(false);
     }
@@ -356,7 +356,7 @@ export default function AdminGameSavesPage() {
 
       if (!res.ok) throw new Error(data.error || 'Fehler beim Importieren');
 
-      alert('Spielstand erfolgreich importiert!');
+      setNotice({ kind: 'success', text: 'Spielstand erfolgreich importiert!' });
       setUploadName('');
       setUploadDescription('');
       setUploadFile(null);
@@ -375,6 +375,11 @@ export default function AdminGameSavesPage() {
     return acc;
   }, {} as Record<number, GameVersion[]>);
   const latestFinishedRun = historicalRuns[0] ?? null;
+  const templateVersion = activeRun?.gameVersion ?? latestFinishedRun?.gameVersion ?? null;
+  const previousVersion = latestFinishedRun?.gameVersion ?? null;
+  const chosenVersion = gameVersions.find((version) => version.key === newRunGameVersion) ?? null;
+  const isVersionChange = Boolean(previousVersion && chosenVersion && previousVersion.key !== chosenVersion.key);
+  const chosenTemplateSize = chosenVersion ? routeTemplates[chosenVersion.key] ?? 0 : 0;
 
   if (loading) {
     return (
@@ -399,6 +404,20 @@ export default function AdminGameSavesPage() {
         <p className="mt-2 text-[var(--text-secondary)]">Verwalte Spielstände und Nuzlocke-Runs</p>
       </header>
 
+      {notice ? (
+        <div
+          role={notice.kind === 'error' ? 'alert' : 'status'}
+          className={`flex items-center justify-between gap-3 border-l-4 px-3 py-2 text-sm font-bold ${
+            notice.kind === 'error'
+              ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300'
+              : 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+          }`}
+        >
+          <p>{notice.text}</p>
+          <button type="button" onClick={() => setNotice(null)} className="app-action">Schließen</button>
+        </div>
+      ) : null}
+
       {/* Aktueller Run Status */}
       <section className="app-section p-5 sm:p-6">
         <h2 className="text-2xl font-bold mb-4 text-[var(--foreground)]">Aktueller Run</h2>
@@ -417,13 +436,6 @@ export default function AdminGameSavesPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => setShowRestartRunDialog(true)}
-                disabled={processing}
-                className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/30 rounded-lg transition disabled:opacity-50 font-semibold"
-              >
-                Run neu starten
-              </button>
               <button
                 onClick={() => setShowEndRunDialog(true)}
                 disabled={processing}
@@ -490,7 +502,7 @@ export default function AdminGameSavesPage() {
                   <button
                     type="button"
                     data-testid="run-next-open"
-                    onClick={() => setShowStartRunDialog(true)}
+                    onClick={() => openStartDialog(latestFinishedRun.gameVersion?.key ?? '')}
                     disabled={processing}
                     className="min-h-11 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 font-semibold text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-50"
                   >
@@ -505,7 +517,7 @@ export default function AdminGameSavesPage() {
                 Kein aktiver Run. Starte den ersten Run!
               </p>
               <button
-                onClick={() => setShowStartRunDialog(true)}
+                onClick={() => openStartDialog('')}
                 disabled={processing}
                 className="min-h-11 rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 font-semibold text-green-400 transition hover:bg-green-500/30 disabled:opacity-50"
               >
@@ -556,7 +568,16 @@ export default function AdminGameSavesPage() {
       )}
 
       {/* Spielstände Actions */}
-      <div className="flex justify-end gap-3 mb-4">
+      <div className="flex flex-wrap justify-end gap-3 mb-4">
+        {templateVersion ? (
+          <button
+            onClick={handleSaveRouteTemplate}
+            disabled={processing}
+            className="px-6 py-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 rounded-lg transition disabled:opacity-50 font-semibold"
+          >
+            Routen als Vorlage für {templateVersion.name} speichern
+          </button>
+        ) : null}
         <button
           onClick={() => setShowSaveDialog(true)}
           disabled={processing}
@@ -671,7 +692,7 @@ export default function AdminGameSavesPage() {
       
       {/* Save Dialog */}
       {showSaveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-[var(--card-bg)] rounded-lg p-6 max-w-md w-full mx-4 border border-[var(--border-default)]">
             <h2 className="text-2xl font-bold mb-4 text-[var(--foreground)]">Spielstand speichern</h2>
             <div className="space-y-4">
@@ -734,29 +755,25 @@ export default function AdminGameSavesPage() {
 
       {/* Start Run Dialog */}
       {showStartRunDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-[var(--card-bg)] rounded-lg p-6 max-w-md w-full mx-4 border border-[var(--border-default)]">
             <h2 className="text-2xl font-bold mb-2 text-[var(--foreground)]">
               {latestFinishedRun ? 'Nächsten Run starten' : 'Neuen Run starten'}
             </h2>
             <p className="mb-4 text-sm text-[var(--text-secondary)]">
               {latestFinishedRun
-                ? 'Spieler und Routen bleiben erhalten. Die Live-Begegnungen werden geleert; der Abschlussstand bleibt in der Run-Historie gespeichert.'
+                ? 'Die Spieler bleiben erhalten, die Live-Begegnungen werden geleert. Der Abschlussstand bleibt in der Run-Historie gespeichert.'
                 : 'Lege die Spielversion für den ersten Run fest.'}
             </p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Spielversion</label>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Spielversion *</label>
                 <select
                   value={newRunGameVersion}
                   onChange={(e) => setNewRunGameVersion(e.target.value)}
                   className="w-full px-3 py-2 border border-[var(--border-default)] rounded-md bg-[var(--background-secondary)] text-[var(--foreground)]"
                 >
-                  <option value="">
-                    {latestFinishedRun
-                      ? '-- Gleiche Version beibehalten --'
-                      : '-- Keine Version --'}
-                  </option>
+                  <option value="" disabled>-- Spielversion wählen --</option>
                   {Object.entries(versionsByGen).map(([gen, versions]) => (
                     <optgroup key={gen} label={`Generation ${gen}`}>
                       {versions.map((v) => (
@@ -766,6 +783,14 @@ export default function AdminGameSavesPage() {
                   ))}
                 </select>
               </div>
+              {isVersionChange ? (
+                <p role="status" className="text-sm text-[var(--text-secondary)]">
+                  {previousVersion?.name}: Die aktuellen Routen werden als Vorlage gesichert.{' '}
+                  {chosenTemplateSize > 0
+                    ? `${chosenVersion?.name}: ${chosenTemplateSize} Routen aus der Vorlage ersetzen sie.`
+                    : `Für ${chosenVersion?.name} gibt es noch keine Vorlage, die Routen bleiben stehen.`}
+                </p>
+              ) : null}
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={() => { setShowStartRunDialog(false); setNewRunGameVersion(''); }}
@@ -776,7 +801,7 @@ export default function AdminGameSavesPage() {
                 </button>
                 <button
                   onClick={handleStartRun}
-                  disabled={processing}
+                  disabled={processing || !newRunGameVersion}
                   className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 rounded-md disabled:opacity-50"
                 >
                   {processing ? 'Starte...' : 'Run starten'}
@@ -796,65 +821,6 @@ export default function AdminGameSavesPage() {
           onClose={() => setShowEndRunDialog(false)}
           onConfirm={handleFinishRun}
         />
-      )}
-
-      {/* Restart Run Dialog */}
-      {showRestartRunDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[var(--card-bg)] rounded-lg p-6 max-w-md w-full mx-4 border border-[var(--border-default)]">
-            <h2 className="text-2xl font-bold mb-4 text-[var(--foreground)]">Run neu starten</h2>
-            <p className="text-[var(--text-secondary)] mb-2">Der aktuelle Run wird als Niederlage gespeichert.</p>
-            <p className="text-[var(--text-secondary)] mb-4">Spieler und Routen bleiben erhalten, Begegnungen werden gelöscht.</p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Wer hat verloren? *</label>
-                <select
-                  value={selectedLoser}
-                  onChange={(e) => setSelectedLoser(e.target.value)}
-                  className="w-full px-3 py-2 border border-[var(--border-default)] rounded-md bg-[var(--background-secondary)] text-[var(--foreground)]"
-                >
-                  <option value="">-- Spieler auswählen --</option>
-                  {players.map((p) => (
-                    <option key={p.id} value={p.name}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">Spielversion für neuen Run</label>
-                <select
-                  value={newRunGameVersion}
-                  onChange={(e) => setNewRunGameVersion(e.target.value)}
-                  className="w-full px-3 py-2 border border-[var(--border-default)] rounded-md bg-[var(--background-secondary)] text-[var(--foreground)]"
-                >
-                  <option value="">-- Gleiche Version beibehalten --</option>
-                  {Object.entries(versionsByGen).map(([gen, versions]) => (
-                    <optgroup key={gen} label={`Generation ${gen}`}>
-                      {versions.map((v) => (
-                        <option key={v.key} value={v.key}>{v.name}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => { setShowRestartRunDialog(false); setSelectedLoser(''); setNewRunGameVersion(''); }}
-                  className="px-4 py-2 bg-[var(--background-secondary)] hover:bg-[var(--background-tertiary)] text-[var(--foreground)] border border-[var(--border-default)] rounded-md"
-                  disabled={processing}
-                >
-                  Abbrechen
-                </button>
-                <button
-                  onClick={handleRestartRun}
-                  disabled={processing || !selectedLoser}
-                  className="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/30 rounded-md disabled:opacity-50"
-                >
-                  {processing ? 'Starte neu...' : 'Run neu starten'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </main>
   );

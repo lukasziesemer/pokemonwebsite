@@ -65,6 +65,7 @@ export type RouteCaptureValidationResult =
 
 export interface EncounterLinkUpdateData {
   teamSlot?: number | null;
+  lastTeamSlot?: number | null;
   isKnockedOut?: boolean;
   koCausedBy?: string | null;
   koReason?: string | null;
@@ -317,6 +318,7 @@ export function buildEncounterLinkUpdate(
     case 'reactivate':
       return {
         teamSlot: action.teamSlot ?? null,
+        lastTeamSlot: null,
         isKnockedOut: false,
         koCausedBy: null,
         koReason: null,

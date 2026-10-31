@@ -66,6 +66,40 @@ beforeEach(() => {
 });
 
 describe('executeEncounterLinkAdminAction', () => {
+  it('remembers the team slot of a route that gets knocked out', async () => {
+    arrangeGroup([member(1, 1, { teamSlot: 3 }), member(2, 2, { teamSlot: 3 })]);
+
+    await executeEncounterLinkAdminAction(10, { action: 'knockout', causedBy: 'Lukas', reason: null });
+
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 10 },
+      data: expect.objectContaining({ teamSlot: null, lastTeamSlot: 3 }),
+    });
+  });
+
+  it('keeps a remembered slot when a route outside the team changes status', async () => {
+    const date = new Date('2026-08-10T12:00:00.000Z');
+    const knockedOut = { isKnockedOut: true, koCausedBy: 'Lukas', koDate: date, lastTeamSlot: 3 };
+    arrangeGroup([member(1, 1, knockedOut), member(2, 2, knockedOut)]);
+
+    await executeEncounterLinkAdminAction(10, { action: 'not-caught', causedBy: 'Lukas', reason: null });
+
+    expect(mocks.tx.encounter.updateMany.mock.calls[0][0].data).not.toHaveProperty('lastTeamSlot');
+  });
+
+  it('forgets the remembered slot after reactivating', async () => {
+    const date = new Date('2026-08-10T12:00:00.000Z');
+    const knockedOut = { isKnockedOut: true, koCausedBy: 'Lukas', koDate: date, lastTeamSlot: 3 };
+    arrangeGroup([member(1, 1, knockedOut), member(2, 2, knockedOut)]);
+
+    await executeEncounterLinkAdminAction(10, { action: 'reactivate' });
+
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 10 },
+      data: expect.objectContaining({ teamSlot: null, lastTeamSlot: null }),
+    });
+  });
+
   it('normalizes a mixed legacy group with a group-wide knockout', async () => {
     const date = new Date('2026-08-10T12:00:00.000Z');
     arrangeGroup([

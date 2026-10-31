@@ -185,6 +185,25 @@ describe('executeRouteCapture', () => {
     );
   });
 
+  it('remembers the slot when a team route becomes not caught', async () => {
+    const date = new Date('2026-08-02T12:00:00.000Z');
+    const notCaught = { isNotCaught: true, notCaughtBy: 'Timo', notCaughtDate: date };
+    arrangeGroup(
+      [member(1, 1, { teamSlot: 4 })],
+      [member(1, 1, notCaught), member(2, 2, notCaught)],
+    );
+
+    await executeRouteCapture(10, {
+      catches: [bothCatches[1]],
+      outcome: { type: 'not-caught', causedBy: 'Timo', reason: null },
+    });
+
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 10 },
+      data: expect.objectContaining({ teamSlot: null, lastTeamSlot: 4 }),
+    });
+  });
+
   it('inherits the slot of a route that is already in the team', async () => {
     arrangeGroup(
       [member(1, 1, { teamSlot: 4 })],

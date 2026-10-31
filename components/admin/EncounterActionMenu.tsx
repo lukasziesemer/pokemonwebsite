@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useId,
@@ -19,6 +18,7 @@ import {
   type EncounterAdminTarget,
 } from '@/lib/encounter-admin';
 import EncounterAdminDialog from './EncounterAdminDialog';
+import PokemonCombobox from './PokemonCombobox';
 
 const AdminEvolutionPicker = dynamic(() => import('./AdminEvolutionPicker'), {
   ssr: false,
@@ -109,16 +109,7 @@ export default function EncounterActionMenu({
   const menuId = useId();
 
   const name = pokemonDisplayName(encounter);
-  const filteredPokemon = useMemo(() => {
-    const query = pokemonSearch.trim().toLocaleLowerCase('de-DE');
-    if (!query) return pokemonOptions.slice(0, 20);
-    return pokemonOptions
-      .filter((pokemon) => {
-        const names = `${pokemon.name} ${pokemon.nameGerman ?? ''} ${pokemon.pokedexId}`;
-        return names.toLocaleLowerCase('de-DE').includes(query);
-      })
-      .slice(0, 20);
-  }, [pokemonOptions, pokemonSearch]);
+  const selectedPokemon = pokemonOptions.find((pokemon) => pokemon.id === selectedPokemonId) ?? null;
 
   const resetForm = useCallback((action: Exclude<DialogAction, null>) => {
     setError(null);
@@ -303,14 +294,6 @@ export default function EncounterActionMenu({
         selectedPokemonId !== null &&
         selectedPokemonId !== encounter.pokemon.id));
 
-  // Enter wählt zuerst den besten Treffer; erst das nächste Enter bestätigt.
-  const handlePokemonSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    const firstHit = filteredPokemon[0];
-    if (event.key !== 'Enter' || !firstHit || selectedPokemonId === firstHit.id) return;
-    event.preventDefault();
-    setSelectedPokemonId(firstHit.id);
-  };
-
   const dialogCopy: Record<Exclude<DialogAction, null>, { title: string; description: string; confirm: string; danger?: boolean }> = {
     'swap-pokemon': {
       title: 'Pokémon tauschen',
@@ -427,44 +410,25 @@ export default function EncounterActionMenu({
         >
           {dialogAction === 'swap-pokemon' ? (
             <>
-              <Field label="Pokémon suchen" htmlFor={`pokemon-search-${encounter.id}`}>
-                <input
-                  id={`pokemon-search-${encounter.id}`}
-                  type="search"
-                  value={pokemonSearch}
-                  onChange={(event) => setPokemonSearch(event.target.value)}
-                  onKeyDown={handlePokemonSearchKeyDown}
-                  data-autofocus
-                  placeholder="Name oder Pokédex-Nummer"
-                  disabled={busy}
-                  className={inputClasses}
-                />
-              </Field>
-              <div className="max-h-52 space-y-1 overflow-y-auto" role="listbox" aria-label="Pokémon auswählen">
-                {filteredPokemon.map((pokemon) => (
-                  <button
-                    key={pokemon.id}
-                    type="button"
-                    role="option"
-                    aria-selected={selectedPokemonId === pokemon.id}
-                    onClick={() => setSelectedPokemonId(pokemon.id)}
-                    disabled={busy}
-                    className={`w-full rounded-lg px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                      selectedPokemonId === pokemon.id
-                        ? 'bg-blue-600 text-white'
-                        : 'hover:bg-[var(--background-tertiary)]'
-                    }`}
-                  >
-                    <span className="mr-2 opacity-70">#{pokemon.pokedexId}</span>
-                    {pokemon.nameGerman ?? pokemon.name}
-                  </button>
-                ))}
-                {filteredPokemon.length === 0 ? (
-                  <p role="status" className="px-3 py-4 text-center text-sm text-[var(--text-secondary)]">
-                    {pokemonOptionsLoading ? 'Pokémon-Auswahl wird geladen…' : 'Kein Pokémon gefunden'}
-                  </p>
-                ) : null}
-              </div>
+              <PokemonCombobox
+                label="Neues Pokémon suchen"
+                value={pokemonSearch}
+                onChange={setPokemonSearch}
+                options={pokemonOptions}
+                onSelect={(pokemon) => {
+                  setPokemonSearch('');
+                  setSelectedPokemonId(pokemon.id);
+                }}
+                disabled={busy}
+                autoFocusInDialog
+              />
+              <p role="status" className="text-sm text-[var(--text-secondary)]">
+                {pokemonOptionsLoading
+                  ? 'Pokémon-Auswahl wird geladen…'
+                  : selectedPokemon && selectedPokemon.id !== encounter.pokemon.id
+                    ? `Neu: #${selectedPokemon.pokedexId} ${selectedPokemon.nameGerman ?? selectedPokemon.name}`
+                    : 'Noch kein neues Pokémon gewählt.'}
+              </p>
             </>
           ) : null}
 

@@ -14,6 +14,7 @@ import {
 } from '@/lib/api-utils';
 import prisma from '@/lib/prisma';
 import { bumpLiveRevisions } from '@/lib/live-updates.server';
+import { applyRouteTemplate, saveRouteTemplate } from '@/lib/route-templates.server';
 
 interface NextRunBody {
   gameVersionKey?: string | null;
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
 
             const effectiveVersionKey =
               requestedVersionKey ?? latestRun.gameVersionKey;
+            if (!effectiveVersionKey) return { kind: 'missing-version' as const };
             const isVersionChange =
               effectiveVersionKey !== latestRun.gameVersionKey;
 
@@ -57,6 +59,10 @@ export async function POST(request: NextRequest) {
 
             let nextRunNumber: number;
             if (isVersionChange) {
+              if (latestRun.gameVersionKey) {
+                await saveRouteTemplate(tx, latestRun.gameVersionKey);
+              }
+              await applyRouteTemplate(tx, effectiveVersionKey);
               await tx.run.updateMany({
                 where: { archived: false },
                 data: { archived: true },
@@ -80,7 +86,7 @@ export async function POST(request: NextRequest) {
               include: { gameVersion: true },
             });
 
-            await bumpLiveRevisions(tx, ['runs', 'encounters']);
+            await bumpLiveRevisions(tx, ['runs', 'routes', 'encounters']);
 
             return { kind: 'created' as const, newRun };
           },
@@ -91,6 +97,10 @@ export async function POST(request: NextRequest) {
           return badRequest(
             'Es existiert bereits ein aktiver Run. Bitte beende diesen zuerst.'
           );
+        }
+
+        if (result.kind === 'missing-version') {
+          return badRequest('Bitte wähle eine Spielversion für den nächsten Run aus');
         }
 
         if (result.kind === 'missing-finished-run') {

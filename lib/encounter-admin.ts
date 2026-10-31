@@ -17,6 +17,8 @@ export interface EncounterAdminTarget {
   id: number;
   nickname: string | null;
   teamSlot: number | null;
+  /** Platz vor K.O. oder „Nicht gefangen“; fehlt, wo er nicht gebraucht wird. */
+  lastTeamSlot?: number | null;
   isKnockedOut: boolean;
   koCausedBy: string | null;
   koReason: string | null;

@@ -76,6 +76,7 @@ model Encounter {
   pokemonId   Int
   nickname    String?  // Optional: Spitzname des gefangenen Pokémon
   teamSlot    Int?     // NULL = nicht im Team, 1-6 = Team-Slot (alle Encounters einer Route haben denselben Slot)
+  lastTeamSlot Int?    // Platz vor K.O. oder "Nicht gefangen"; Reaktivieren kann ihn wiederherstellen
   isKnockedOut Boolean @default(false) // K.O.-Status
   koCausedBy  String?  // Spieler der den K.O. verursacht hat
   koReason    String?  // Grund des Ausscheidens (Freitext)
@@ -128,6 +129,18 @@ model GameVersion {
   pokeapiVersionSlug      String?
   pokeapiVersionGroupSlug String?
   runs                    Run[]
+  routeTemplates          RouteTemplate[]
+}
+
+// Routenliste einer Spielversion; ersetzt beim Versionswechsel die aktuellen Routen.
+model RouteTemplate {
+  id             Int         @id @default(autoincrement())
+  gameVersion    GameVersion @relation(fields: [gameVersionKey], references: [key], onDelete: Cascade)
+  gameVersionKey String
+  name           String
+  order          Int         @default(0)
+
+  @@index([gameVersionKey])
 }
 
 // Editionsspezifische Detaildaten von PokeAPI. Der Payload enthält nur

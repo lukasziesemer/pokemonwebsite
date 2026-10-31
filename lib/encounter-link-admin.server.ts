@@ -220,7 +220,14 @@ export async function executeEncounterLinkAdminAction(
 
           const updated = await tx.encounter.updateMany({
             where: { routeId },
-            data: buildEncounterLinkUpdate(action),
+            data: {
+              ...buildEncounterLinkUpdate(action),
+              // Wer nicht im Team stand, behält einen früher gemerkten Platz.
+              ...((action.action === 'knockout' || action.action === 'not-caught') &&
+              previousTeamSlot !== undefined
+                ? { lastTeamSlot: previousTeamSlot }
+                : {}),
+            },
           });
           const encounters = await tx.encounter.findMany({
             where: { routeId },
@@ -454,11 +461,14 @@ export async function executeRouteCapture(
           if (outcome.type === 'not-caught') {
             await tx.encounter.updateMany({
               where: { routeId },
-              data: buildEncounterLinkUpdate({
-                action: 'not-caught',
-                causedBy: outcome.causedBy,
-                reason: outcome.reason,
-              }),
+              data: {
+                ...buildEncounterLinkUpdate({
+                  action: 'not-caught',
+                  causedBy: outcome.causedBy,
+                  reason: outcome.reason,
+                }),
+                ...(wasInTeam ? { lastTeamSlot: report.teamSlot } : {}),
+              },
             });
           }
 
