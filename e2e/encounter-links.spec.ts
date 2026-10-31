@@ -165,7 +165,7 @@ test.describe('Encounter-Link-Verwaltung', () => {
     const dialog = page.getByRole('dialog', { name: 'Link K.O. setzen' });
     await expect(dialog.getByRole('heading', { name: 'Betroffene Pokémon' })).toBeVisible();
     const playerSelect = dialog.getByLabel('Verursacher');
-    await expect(playerSelect.getByRole('option', { name: 'Spieler auswählen' })).toBeDisabled();
+    await expect(playerSelect.getByRole('option', { name: 'Spieler auswählen' })).toHaveJSProperty('disabled', true);
     await playerSelect.selectOption({ index: 1 });
     const selectedPlayer = await playerSelect.inputValue();
     expect(selectedPlayer).not.toBe('');

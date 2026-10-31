@@ -90,7 +90,7 @@ test.describe('Öffentlicher Login', () => {
     await page.goto('/login');
 
     await expect(page.locator('html')).toHaveClass(/dark/);
-    const heading = page.getByRole('heading', { name: 'Admin Login' });
+    const heading = page.getByRole('heading', { name: 'Anmelden' });
     const usernameLabel = page.getByText('Benutzername', { exact: true });
     const usernameInput = page.getByLabel('Benutzername');
     await expect(heading).toBeVisible();
@@ -114,7 +114,7 @@ test.describe('Administration', () => {
     await page.goto('/login?redirect=%2Ftabelle');
 
     await expect.poll(() => new URL(page.url()).pathname).toBe('/tabelle');
-    await expect(page.getByRole('heading', { name: 'Admin Login' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Anmelden' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Admin', exact: true }).first()).toBeVisible();
   });
 

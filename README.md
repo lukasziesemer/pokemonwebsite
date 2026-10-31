@@ -330,7 +330,10 @@ npm run lint
 npm run test
 
 # E2E-Tests (Playwright, erwartet laufende App unter E2E_BASE_URL,
-# Standard: http://127.0.0.1:3001; Admin-Login ueber ADMIN_USERNAME/ADMIN_PASSWORD)
+# Standard: http://127.0.0.1:3001; Admin-Login ueber ADMIN_USERNAME/ADMIN_PASSWORD).
+# Achtung: Port 3001 ist auch die Docker-App mit echten Daten. Fuer lokale Laeufe
+# eine eigene Testdatenbank nutzen (Name muss "e2e" enthalten) und befuellen mit:
+# node e2e/seed-test-db.mjs
 npm run test:e2e
 npm run test:e2e:headed
 
@@ -355,6 +358,7 @@ npx prisma db push
 - `GET /api/pokemon/[pokedexId]/details?gameVersion=...` - Editionsspezifische Details (Attacken, Entwicklungskette)
 - `GET /api/pokemon/[pokedexId]/evolutions` - Vor- und Nachentwicklungen
 - `GET /api/pokeradar/teams` - Teams fuer den Vergleich
+- `GET /api/pokeradar/context` - Edition und Level-Cap des aktuellen Runs
 - `GET /api/streams` - Alle Streams mit Teams und Run-Daten
 - `GET /api/events/latest?since=...` - Live-Events und Aenderungsstaende (Polling)
 - `GET /api/runs/stats`, `/api/runs/overview`, `/api/runs/history`, `/api/runs/history/[id]`, `/api/runs/compare`, `/api/runs/analytics` - Run-Statistiken
