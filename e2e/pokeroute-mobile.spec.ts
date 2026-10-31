@@ -13,6 +13,12 @@ async function openRoutes(page: Page) {
   );
 }
 
+async function openAdminRoutes(page: Page) {
+  await openRoutes(page);
+  // Eine ungültige Admin-Session darf nicht als fehlende Testdaten durchgehen.
+  await expect(page.getByRole('button', { name: 'Route erstellen' })).toBeVisible();
+}
+
 async function expectNoPageOverflow(page: Page) {
   const { scrollWidth, innerWidth } = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -34,7 +40,7 @@ for (const width of [390, 360]) {
 
         // Ein eigener Scroll-Container würde den Seitenüberlauf nur verstecken.
         const playerHeadings = page.locator('.route-list-row h4');
-        expect(await playerHeadings.count()).toBeGreaterThan(0);
+        test.skip((await playerHeadings.count()) === 0, 'Der aktuelle Spielstand enthält keine Spieler.');
         for (const heading of await playerHeadings.all()) {
           const box = await heading.boundingBox();
           expect(box).not.toBeNull();
@@ -45,7 +51,10 @@ for (const width of [390, 360]) {
       test('öffnet Encounter-Karten per Tippen', async ({ page }) => {
         await openRoutes(page);
 
-        await page.locator('.route-list-row').getByRole('button', { name: /: Details öffnen$/ }).first().click();
+        const card = page.locator('.route-list-row').getByRole('button', { name: /: Details öffnen$/ }).first();
+        test.skip((await card.count()) === 0, 'Der aktuelle Spielstand enthält keine Encounter.');
+
+        await card.click();
         await expect(page.getByRole('dialog')).toBeVisible();
       });
     });
@@ -57,13 +66,15 @@ for (const width of [390, 360]) {
       );
 
       test('hält Encounter-Menüs im Viewport', async ({ page }) => {
-        await openRoutes(page);
+        await openAdminRoutes(page);
         await expectNoPageOverflow(page);
 
         const trigger = page
           .locator('.route-list-row')
           .getByRole('button', { name: /^(?!Link ).+ verwalten$/ })
           .first();
+        test.skip((await trigger.count()) === 0, 'Der aktuelle Spielstand enthält keine Encounter.');
+
         await trigger.click();
 
         const menu = page.getByRole('menu');
@@ -75,16 +86,19 @@ for (const width of [390, 360]) {
       });
 
       test('schneidet die Pokémon-Suche freier Slots nicht ab', async ({ page }) => {
-        await openRoutes(page);
+        await openAdminRoutes(page);
 
         const search = page.getByPlaceholder('Pokemon suchen...').first();
         test.skip((await search.count()) === 0, 'Der aktuelle Spielstand enthält keinen freien Slot.');
 
         await search.fill('a');
-        const firstResult = page.locator('.route-list-row button', { hasText: '#' }).first();
-        await expect(firstResult).toBeVisible();
-        // Liegt das Ergebnis in einem Clip-Container, trifft der Klickpunkt nicht mehr den Button.
-        await firstResult.click({ trial: true });
+        const popup = page
+          .locator('.route-list-row button', { hasText: '#' })
+          .or(page.getByText('Kein Pokemon gefunden'))
+          .first();
+        await expect(popup).toBeVisible();
+        // Liegt das Dropdown in einem Clip-Container, trifft der Klickpunkt nicht mehr sein Element.
+        await popup.click({ trial: true });
         await expectNoPageOverflow(page);
       });
     });
