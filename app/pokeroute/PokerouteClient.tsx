@@ -10,7 +10,7 @@ import TeamDisplay from '@/components/TeamDisplay';
 import RouteList from '@/components/RouteList';
 import RouteCapturePanel from '@/components/admin/RouteCapturePanel';
 import RouteUndoNotice from '@/components/admin/RouteUndoNotice';
-import type { RouteStatusChange } from '@/components/admin/route-link-ui';
+import { isRouteStatusChangeCurrent, type RouteStatusChange } from '@/components/admin/route-link-ui';
 import PlayerAvatar from '@/components/PlayerAvatar';
 import AppPageTitle from '@/components/layout/AppPageTitle';
 import { PokemonDetailsProvider } from '@/components/pokemon-details';
@@ -331,9 +331,9 @@ export default function PokerouteClient({
         </div>
       </section>
 
-      {undoableChange ? (
+      {undoableChange && isRouteStatusChangeCurrent(undoableChange, routes) ? (
         <RouteUndoNotice
-          key={`${undoableChange.routeId}-${undoableChange.status}`}
+          key={`${undoableChange.routeId}-${undoableChange.statusDate}`}
           change={undoableChange}
           onUndone={reloadData}
           onClose={() => setUndoableChange(null)}

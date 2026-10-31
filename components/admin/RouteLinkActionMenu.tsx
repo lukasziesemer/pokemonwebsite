@@ -241,6 +241,9 @@ export default function RouteLinkActionMenu({
           routeId: link.route.id,
           routeName: link.route.name,
           status: action.action,
+          statusDate: (action.action === 'knockout'
+            ? result.encounters[0]?.koDate
+            : result.encounters[0]?.notCaughtDate) ?? null,
           teamSlot: typeof state.teamSlot === 'number' ? state.teamSlot : null,
         });
       }

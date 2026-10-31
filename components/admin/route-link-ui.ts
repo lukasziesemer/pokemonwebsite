@@ -21,6 +21,8 @@ export interface RouteStatusChange {
   routeId: number;
   routeName: string;
   status: 'knockout' | 'not-caught';
+  /** Zeitstempel des Status; unterscheidet diesen Wechsel von jedem späteren. */
+  statusDate: string | null;
   teamSlot: number | null;
 }
 
@@ -137,6 +139,20 @@ export function getOpenCaptureRoutes<
     const captured = new Set(encounters.map(({ player }) => player.id));
     return !isInactive && playerIds.some((playerId) => !captured.has(playerId));
   });
+}
+
+/** Rückgängig gilt nur, solange die Route noch genau in diesem Status steht. */
+export function isRouteStatusChangeCurrent(
+  change: RouteStatusChange,
+  routes: {
+    id: number;
+    encounters: { koDate: string | null; notCaughtDate: string | null }[];
+  }[],
+): boolean {
+  const encounters = routes.find((route) => route.id === change.routeId)?.encounters ?? [];
+  return encounters.length > 0 && encounters.every((encounter) =>
+    (change.status === 'knockout' ? encounter.koDate : encounter.notCaughtDate) === change.statusDate,
+  );
 }
 
 export function getFirstFreeTeamSlot(occupied: OccupiedTeamSlots): number | null {

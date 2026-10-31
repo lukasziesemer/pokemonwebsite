@@ -171,6 +171,9 @@ export async function executeEncounterLinkAdminAction(
             if (action.action !== 'reactivate' && report.status !== 'active') {
               return { kind: 'inactive' as const };
             }
+            if (action.action === 'reactivate' && report.status === 'active') {
+              return { kind: 'already-active' as const };
+            }
 
             // Das Schema hat kein Active-Flag. Daher ist die aktuelle Player-
             // Tabelle die verbindliche aktive Spielerliste.
@@ -260,6 +263,13 @@ export async function executeEncounterLinkAdminAction(
           ok: false,
           status: 409,
           error: 'K.O. oder nicht gefangene Routen-Links müssen zuerst reaktiviert werden',
+        };
+      }
+      if (result.kind === 'already-active') {
+        return {
+          ok: false,
+          status: 409,
+          error: 'Die Route ist bereits aktiv. Ihr Teamplatz wurde nicht geändert.',
         };
       }
       if (result.kind === 'incomplete') {

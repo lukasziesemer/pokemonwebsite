@@ -385,6 +385,18 @@ describe('executeEncounterLinkAdminAction', () => {
     expect(mocks.emitEvent).not.toHaveBeenCalled();
   });
 
+  it('refuses a stale undo on a route that is active again', async () => {
+    mocks.tx.encounter.findMany.mockResolvedValueOnce([
+      member(1, 1, { teamSlot: 5 }),
+      member(2, 2, { teamSlot: 5 }),
+    ]);
+
+    const result = await executeEncounterLinkAdminAction(10, { action: 'reactivate', teamSlot: 3 });
+
+    expect(result).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('bereits aktiv') });
+    expect(mocks.tx.encounter.updateMany).not.toHaveBeenCalled();
+  });
+
   it('keeps the knockout when the old team slot is taken in the meantime', async () => {
     const date = new Date('2026-08-10T12:00:00.000Z');
     const knockedOut = { isKnockedOut: true, koCausedBy: 'Lukas', koDate: date };

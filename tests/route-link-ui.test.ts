@@ -8,6 +8,7 @@ import {
   getNextTeamSlot,
   getOccupiedTeamSlots,
   getTeamSlotRouteOptions,
+  isRouteStatusChangeCurrent,
 } from '@/components/admin/route-link-ui';
 
 function encounter(
@@ -158,6 +159,37 @@ describe('Teamplatz-Belegung', () => {
       confirm: 'Route ersetzen',
       hint: 'Route 1 verliert Platz 1 und kommt aus dem Team.',
     });
+  });
+});
+
+describe('Rückgängig nach einem Statuswechsel', () => {
+  const change = {
+    routeId: 1,
+    routeName: 'Route 1',
+    status: 'knockout' as const,
+    statusDate: '2026-10-31T12:00:00.000Z',
+    teamSlot: 2,
+  };
+  const withDates = (koDate: string | null, notCaughtDate: string | null = null) => [
+    { id: 1, encounters: [{ koDate, notCaughtDate }, { koDate, notCaughtDate }] },
+  ];
+
+  it('gilt, solange die Route genau in diesem Status steht', () => {
+    expect(isRouteStatusChangeCurrent(change, withDates(change.statusDate))).toBe(true);
+    expect(
+      isRouteStatusChangeCurrent(
+        { ...change, status: 'not-caught' },
+        withDates(null, change.statusDate),
+      ),
+    ).toBe(true);
+  });
+
+  it('verfällt nach Reaktivieren, neuem Status oder Löschen', () => {
+    expect(isRouteStatusChangeCurrent(change, withDates(null))).toBe(false);
+    expect(isRouteStatusChangeCurrent(change, withDates(null, change.statusDate))).toBe(false);
+    expect(isRouteStatusChangeCurrent(change, withDates('2026-10-31T13:00:00.000Z'))).toBe(false);
+    expect(isRouteStatusChangeCurrent(change, [{ id: 1, encounters: [] }])).toBe(false);
+    expect(isRouteStatusChangeCurrent(change, [])).toBe(false);
   });
 });
 

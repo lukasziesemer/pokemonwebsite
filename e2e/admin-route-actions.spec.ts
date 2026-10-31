@@ -104,13 +104,39 @@ test.describe('Teamplatz-Auswahl', () => {
 test.describe('K.O. rückgängig', () => {
   test('stellt nach dem K.O. den Teamplatz wieder her', async ({ page }) => {
     const requests: unknown[] = [];
+    const koDate = '2026-10-31T12:00:00.000Z';
+    let knockedOutRouteId: number | null = null;
+    await page.route(/\/api\/routes$/, async (route) => {
+      const response = await route.fetch();
+      const routes = (await response.json()) as { id: number; encounters: object[] }[];
+      await route.fulfill({
+        response,
+        json: routes.map((candidate) => candidate.id !== knockedOutRouteId ? candidate : {
+          ...candidate,
+          encounters: candidate.encounters.map((encounter) => ({
+            ...encounter,
+            teamSlot: null,
+            isKnockedOut: true,
+            koCausedBy: 'Spieler Rot',
+            koDate,
+          })),
+        }),
+      });
+    });
     await page.route(/\/api\/admin\/encounter-links\/\d+$/, async (route) => {
       const body = route.request().postDataJSON() as { action: string };
       requests.push(body);
       if (body.action === 'knockout') {
+        knockedOutRouteId = Number(route.request().url().split('/').pop());
         await route.fulfill({
           contentType: 'application/json',
-          body: JSON.stringify({ success: true, routeId: 1, action: 'knockout', count: 2, encounters: [] }),
+          body: JSON.stringify({
+            success: true,
+            routeId: knockedOutRouteId,
+            action: 'knockout',
+            count: 2,
+            encounters: [{ koDate, notCaughtDate: null }],
+          }),
         });
         return;
       }
