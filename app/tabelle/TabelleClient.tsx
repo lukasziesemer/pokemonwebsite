@@ -67,6 +67,8 @@ interface TabelleClientProps {
   players: PlayerInfo[];
   rows: RouteRow[];
   currentGameVersion: { key: string; name: string } | null;
+  initialTeamFilter?: TeamFilter;
+  initialStatusFilter?: EncounterStatusFilter;
 }
 
 const TYPE_TRANSLATIONS: Record<string, string> = {
@@ -115,7 +117,13 @@ function SortIndicator({ direction }: { direction: SortDirection }) {
   );
 }
 
-export default function TabelleClient({ players, rows, currentGameVersion }: TabelleClientProps) {
+export default function TabelleClient({
+  players,
+  rows,
+  currentGameVersion,
+  initialTeamFilter = 'all',
+  initialStatusFilter = 'all',
+}: TabelleClientProps) {
   const router = useRouter();
   const { isAdmin } = useAuth();
   const { spriteMode } = useSpriteMode();
@@ -125,8 +133,8 @@ export default function TabelleClient({ players, rows, currentGameVersion }: Tab
     key: 'route',
     direction: 'asc',
   });
-  const [teamFilter, setTeamFilter] = useState<TeamFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<EncounterStatusFilter>('all');
+  const [teamFilter, setTeamFilter] = useState<TeamFilter>(initialTeamFilter);
+  const [statusFilter, setStatusFilter] = useState<EncounterStatusFilter>(initialStatusFilter);
   const [pokemonOptions, setPokemonOptions] = useState<PokemonListItem[] | null>(null);
   const [pokemonOptionsLoading, setPokemonOptionsLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);

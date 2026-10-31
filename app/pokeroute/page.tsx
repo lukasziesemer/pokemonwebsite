@@ -3,7 +3,7 @@
  * Zeigt aktuelle Teams und Routen mit Encounters
  */
 
-import PokerouteClient from './PokerouteClient';
+import PokerouteClient, { type RouteRunNotice } from './PokerouteClient';
 import { getCurrentGameVersion } from '@/lib/current-game';
 import prisma from '@/lib/prisma';
 
@@ -92,17 +92,50 @@ async function getRoutes() {
   }
 }
 
-export default async function PokeroutePage() {
-  const [players, routes, currentGameVersion] = await Promise.all([
+async function getRunNotice(): Promise<RouteRunNotice | null> {
+  try {
+    const activeRun = await prisma.run.findFirst({
+      where: { status: 'active', archived: false },
+      select: { id: true },
+    });
+    if (activeRun) return null;
+
+    const latestRun = await prisma.run.findFirst({
+      where: { archived: false },
+      select: { runNumber: true },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+    });
+    return latestRun ? { endedRunNumber: latestRun.runNumber } : { endedRunNumber: null };
+  } catch (error) {
+    console.error('Error fetching run notice:', error);
+    return null;
+  }
+}
+
+function parseRouteId(value: string | undefined): number | null {
+  const routeId = Number(value);
+  return Number.isInteger(routeId) && routeId > 0 ? routeId : null;
+}
+
+export default async function PokeroutePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ route?: string }>;
+}) {
+  const { route } = await searchParams;
+  const [players, routes, currentGameVersion, runNotice] = await Promise.all([
     getPlayers(),
     getRoutes(),
     getCurrentGameVersion(),
+    getRunNotice(),
   ]);
 
   return (
     <PokerouteClient 
       initialPlayers={players}
       initialRoutes={routes}
+      initialRouteId={parseRouteId(route)}
+      runNotice={runNotice}
       currentGameVersion={currentGameVersion
         ? { key: currentGameVersion.key, name: currentGameVersion.name }
         : null}

@@ -63,6 +63,14 @@ export interface AdminDashboardEncounter {
   };
 }
 
+/** Aktive Route ohne Teamplatz; eine Teamentscheidung gilt immer für die ganze Route. */
+export interface AdminDashboardOpenRoute {
+  routeId: number;
+  routeName: string;
+  encounters: AdminDashboardEncounter[];
+  isComplete: boolean;
+}
+
 export type AdminDashboardEventType =
   | 'knocked_out'
   | 'not_caught'
@@ -93,8 +101,8 @@ export interface AdminDashboardData {
   activeRunCount: number | null;
   players: AdminDashboardPlayer[];
   teamsAvailable: boolean;
-  availableEncounters: AdminDashboardEncounter[];
-  availableEncounterCount: number | null;
+  openRoutes: AdminDashboardOpenRoute[];
+  openRouteCount: number | null;
   assignmentsAvailable: boolean;
   recentEvents: AdminDashboardEvent[];
   eventsAvailable: boolean;
@@ -134,6 +142,34 @@ export function getPlayerTeamSummary(player: AdminDashboardPlayer) {
       membersBySlot.get(index + 1) ?? null
     ),
   };
+}
+
+export function buildOpenRoutes(
+  encounters: AdminDashboardEncounter[],
+  playerCount: number,
+): AdminDashboardOpenRoute[] {
+  const routes = new Map<number, AdminDashboardOpenRoute>();
+
+  for (const encounter of encounters) {
+    const route = routes.get(encounter.route.id) ?? {
+      routeId: encounter.route.id,
+      routeName: encounter.route.name,
+      encounters: [],
+      isComplete: false,
+    };
+    route.encounters.push(encounter);
+    route.isComplete = playerCount > 0 && route.encounters.length === playerCount;
+    routes.set(route.routeId, route);
+  }
+
+  return Array.from(routes.values());
+}
+
+/** Alle Spieler teilen die Plätze; belegt ist ein Platz, wenn irgendein Spieler ihn nutzt. */
+export function getFirstFreeTeamSlot(players: AdminDashboardPlayer[]): number | null {
+  const occupied = new Set(players.flatMap((player) => player.teamMembers.map((member) => member.teamSlot)));
+  const slots = Array.from({ length: TEAM_SIZE }, (_, index) => index + 1);
+  return slots.find((slot) => !occupied.has(slot)) ?? null;
 }
 
 export function buildRecentEvents(

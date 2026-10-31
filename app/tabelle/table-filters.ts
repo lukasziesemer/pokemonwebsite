@@ -9,6 +9,20 @@ export interface FilterableEncounterCell {
   };
 }
 
+const TEAM_FILTERS: readonly string[] = ['all', 'in-team', 'not-in-team'];
+const STATUS_FILTERS: readonly string[] = ['all', 'active', 'knocked-out', 'not-caught'];
+
+/** Filter aus der URL; unbekannte Werte zeigen wie bisher alles. */
+export function parseTeamFilter(value: unknown): TeamFilter {
+  return typeof value === 'string' && TEAM_FILTERS.includes(value) ? (value as TeamFilter) : 'all';
+}
+
+export function parseStatusFilter(value: unknown): EncounterStatusFilter {
+  return typeof value === 'string' && STATUS_FILTERS.includes(value)
+    ? (value as EncounterStatusFilter)
+    : 'all';
+}
+
 export function compareRoutesByOrder(
   left: { name: string; order: number },
   right: { name: string; order: number },
