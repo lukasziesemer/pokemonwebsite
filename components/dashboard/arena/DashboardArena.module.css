@@ -1,0 +1,420 @@
+/* Die Szene ist das Bild, das HTML sind die Kampfboxen aus den Spielen. */
+.arena {
+  --ink: #16202e;
+  --box: #fbf8ee;
+  --box-muted: #e4ddc8;
+  --muted: #5d6675;
+  --gold: #c98a06;
+  --red: #e0262c;
+  --hard-shadow: 4px 4px 0 rgb(22 32 46 / 55%);
+
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  height: calc(100svh - 61px);
+  min-height: 560px;
+  background: #7cc4ee;
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.stage,
+.tags {
+  position: absolute;
+  inset: 0;
+}
+
+.tags {
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.panel {
+  margin: 0;
+  background: var(--box);
+  border: 3px solid var(--ink);
+  border-radius: 12px 12px 12px 4px;
+  box-shadow: var(--hard-shadow);
+}
+
+.title {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  left: max(20px, env(safe-area-inset-left, 0px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px 9px 14px;
+}
+
+.title b {
+  color: var(--red);
+  font: 400 40px/1 var(--arena-display);
+}
+
+.title h1 {
+  margin: 0;
+  font: 400 19px/1.1 var(--arena-display);
+}
+
+.title p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.title em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.title em[data-tone='active'] { color: #1f7a3f; }
+.title em[data-tone='paused'] { color: var(--gold); }
+.title em[data-tone='complete'] { color: #1f7a3f; }
+.title em[data-tone='danger'] { color: var(--red); }
+
+.badgeCase {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: max(20px, env(safe-area-inset-right, 0px));
+  padding: 7px 10px;
+  background: var(--ink);
+  border-color: #b98f2e;
+}
+
+.badgeCase ol {
+  display: flex;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.badgeCase li {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.badgeCase li[data-saving='true'] {
+  animation: arena-saving 800ms ease-in-out infinite alternate;
+}
+
+.badgeCase button,
+.badgeCase span[title] {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+}
+
+.badgeCase button {
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.badgeCase button:disabled {
+  cursor: progress;
+}
+
+.badgeCase button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 1px;
+}
+
+.badgeCase img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  filter: grayscale(1) brightness(0.45);
+}
+
+.badgeCase .badgeEarned img {
+  filter: none;
+}
+
+.badgeCase small {
+  color: #e8dfc4;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.badgeCase p {
+  margin: 6px 0 0;
+  color: #ffb4b4;
+  font-size: 13px;
+}
+
+.trainers {
+  position: absolute;
+  z-index: 2;
+  left: max(20px, env(safe-area-inset-left, 0px));
+  right: max(20px, env(safe-area-inset-right, 0px));
+  bottom: 18px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.trainer {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--box);
+  border: 3px solid var(--ink);
+  border-radius: 12px 12px 12px 4px;
+  box-shadow: var(--hard-shadow);
+}
+
+.trainerToggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trainerToggle:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: -5px;
+}
+
+.trainerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px 6px;
+  background: var(--accent);
+  border-bottom: 3px solid var(--ink);
+}
+
+.trainerName {
+  min-width: 0;
+  overflow: hidden;
+  font: 400 25px/1 var(--arena-display);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trainerName small {
+  margin-left: 6px;
+  font-family: var(--arena-body);
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+
+.balls {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.balls i {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: linear-gradient(#e0262c 0 44%, var(--ink) 44% 56%, #fff 56%);
+}
+
+.balls i[data-free] {
+  background: rgb(22 32 46 / 18%);
+}
+
+.trainerStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  padding: 5px 12px 7px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.trainerStats strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.roster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  margin: 0;
+  padding: 0 12px 7px;
+  list-style: none;
+}
+
+.roster button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roster button:hover span {
+  text-decoration: underline;
+}
+
+.roster button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.roster span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster small {
+  flex: none;
+  color: var(--muted);
+  font-size: inherit;
+}
+
+.total {
+  flex: none;
+  padding: 9px 13px 10px;
+  border: 3px solid var(--ink);
+  border-radius: 12px 12px 12px 4px;
+  background: var(--box-muted);
+  box-shadow: var(--hard-shadow);
+  color: var(--ink);
+  font: 400 17px/1.1 var(--arena-display);
+  text-align: left;
+  cursor: pointer;
+}
+
+.total span {
+  display: block;
+}
+
+.total[aria-pressed='true'] {
+  background: #ffd34d;
+}
+
+.total:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 8px 2px;
+  background: var(--box);
+  border: 2px solid var(--ink);
+  border-radius: 7px 7px 7px 2px;
+  box-shadow: 2px 2px 0 rgb(22 32 46 / 50%);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.tagHot {
+  background: #ffd34d;
+}
+
+@keyframes arena-saving {
+  to { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badgeCase li[data-saving='true'] {
+    animation: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .arena {
+    height: calc(100svh - 59px - 64px);
+  }
+
+  .title {
+    top: 10px;
+    left: 12px;
+  }
+
+  .title b {
+    font-size: 32px;
+  }
+
+  .badgeCase {
+    top: 80px;
+    left: 12px;
+    right: auto;
+    padding: 4px 6px;
+  }
+
+  .badgeCase ol {
+    gap: 3px;
+  }
+
+  .badgeCase img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .badgeCase small {
+    font-size: 10px;
+  }
+
+  .trainers {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .total {
+    display: none;
+  }
+
+  .trainer {
+    flex: 1 1 28%;
+  }
+
+  .trainer[data-focused] {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .trainerName {
+    font-size: 19px;
+  }
+
+  .trainer:not([data-focused]) .trainerName small,
+  .trainer:not([data-focused]) .balls,
+  .trainer:not([data-focused]) .trainerStats {
+    display: none;
+  }
+
+  .trainer:not([data-focused]) .trainerHead {
+    border-bottom: 0;
+  }
+}
