@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import type { CSSProperties } from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { DashboardData } from '@/app/dashboard-data';
 import { getLevelCapsForGame } from '@/lib/badge-data';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -20,9 +20,19 @@ type BadgeProgressStyle = CSSProperties & {
 
 export default function BadgeProgressBand({ data }: { data: DashboardData }) {
   const { isAdmin } = useAuth();
-  const [earned, setEarned] = useState(data.run?.badgesEarned ?? 0);
+  const runId = data.run?.id;
+  const serverEarned = data.run?.badgesEarned ?? 0;
+  const [earned, setEarned] = useState(serverEarned);
+  const [synced, setSynced] = useState({ runId, serverEarned });
   const [savingBadge, setSavingBadge] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Neue Dashboard-Daten ersetzen den lokalen Stand.
+  if (synced.runId !== runId || synced.serverEarned !== serverEarned) {
+    setSynced({ runId, serverEarned });
+    setEarned(serverEarned);
+  }
+
   const total = data.badges.length;
   const levelCaps = data.run?.gameVersionKey
     ? getLevelCapsForGame(data.run.gameVersionKey)
@@ -43,10 +53,6 @@ export default function BadgeProgressBand({ data }: { data: DashboardData }) {
       && (data.run.status === 'active' || data.run.status === 'paused')
       && total > 0,
   );
-
-  useEffect(() => {
-    setEarned(data.run?.badgesEarned ?? 0);
-  }, [data.run?.badgesEarned, data.run?.id]);
 
   const updateBadgeProgress = async (position: number) => {
     if (!canEdit || !data.run || savingBadge !== null) return;

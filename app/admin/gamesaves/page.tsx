@@ -74,35 +74,38 @@ export default function AdminGameSavesPage() {
   const getErrorMessage = (error: unknown) =>
     error instanceof Error ? error.message : 'Unbekannter Fehler';
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [savesRes, versionsRes, runsRes, playersRes] = await Promise.all([
+  const fetchData = useCallback(
+    () =>
+      Promise.all([
         fetch('/api/admin/gamesaves'),
         fetch('/api/admin/game-versions'),
         fetch('/api/admin/runs'),
         fetch('/api/players'),
-      ]);
+      ])
+        .then(async ([savesRes, versionsRes, runsRes, playersRes]) => {
+          if (!savesRes.ok || !versionsRes.ok || !runsRes.ok) {
+            throw new Error('Fehler beim Laden der Daten');
+          }
 
-      if (!savesRes.ok || !versionsRes.ok || !runsRes.ok) {
-        throw new Error('Fehler beim Laden der Daten');
-      }
+          const savesJson = await savesRes.json();
+          const versionsJson = await versionsRes.json();
+          const runsJson = await runsRes.json();
+          const playersJson = await playersRes.json();
 
-      const savesJson = await savesRes.json();
-      const versionsJson = await versionsRes.json();
-      const runsJson = await runsRes.json();
-      const playersJson = await playersRes.json();
-
-      setGameSaves(savesJson.data || []);
-      setGameVersions(versionsJson.data || []);
-      setActiveRun(runsJson.data?.activeRun || null);
-      setHistoricalRuns(runsJson.data?.historicalRuns || []);
-      setPlayers(playersJson || []);
-    } catch (error) {
-      setError(getErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+          setGameSaves(savesJson.data || []);
+          setGameVersions(versionsJson.data || []);
+          setActiveRun(runsJson.data?.activeRun || null);
+          setHistoricalRuns(runsJson.data?.historicalRuns || []);
+          setPlayers(playersJson || []);
+        })
+        .catch((error) => {
+          setError(getErrorMessage(error));
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    [],
+  );
 
   useEffect(() => {
     fetchData();
@@ -326,7 +329,10 @@ export default function AdminGameSavesPage() {
   };
 
   const handleDownloadSave = (gameSaveId: number) => {
-    window.location.href = `/api/admin/gamesaves/${gameSaveId}/download`;
+    // Die Route liefert einen Datei-Download und keine Next.js-Seite.
+    const link = document.createElement('a');
+    link.href = `/api/admin/gamesaves/${gameSaveId}/download`;
+    link.click();
   };
 
   const handleUploadSave = async (e: React.FormEvent) => {

@@ -43,27 +43,54 @@ interface RunStatsPanelProps {
   isAdmin?: boolean;
 }
 
+function formatElapsedTime(activeRun: ActiveRun, now: number): string {
+  const startTime = new Date(activeRun.startedAt).getTime();
+  const totalPausedMs = activeRun.totalPausedMs || 0;
+
+  let elapsedMs: number;
+
+  if (activeRun.pausedAt) {
+    // Run ist pausiert - zeige Zeit bis zur Pause
+    const pauseTime = new Date(activeRun.pausedAt).getTime();
+    elapsedMs = pauseTime - startTime - totalPausedMs;
+  } else {
+    // Run läuft - zeige aktuelle Zeit minus pausierte Zeit
+    elapsedMs = now - startTime - totalPausedMs;
+  }
+
+  const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
+  const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
 export default function RunStatsPanel({ isAdmin = false }: RunStatsPanelProps) {
   const [stats, setStats] = useState<RunStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  const [elapsedTime, setElapsedTime] = useState('');
+  const [now, setNow] = useState(0);
   const [pauseLoading, setPauseLoading] = useState(false);
   const [badgeLoading, setBadgeLoading] = useState(false);
 
-  const fetchStats = async () => {
-    try {
-      const res = await fetch('/api/runs/stats');
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
-    } catch (error) {
-      console.error('Error fetching run stats:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchStats = () =>
+    fetch('/api/runs/stats')
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data);
+          setNow(Date.now());
+        }
+      })
+      .catch((error) => {
+        console.error('Error fetching run stats:', error);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
   useEffect(() => {
     fetchStats();
@@ -111,53 +138,21 @@ export default function RunStatsPanel({ isAdmin = false }: RunStatsPanelProps) {
     }
   };
 
+  const activeRun = stats?.activeRun;
+  const elapsedTime = activeRun?.startedAt ? formatElapsedTime(activeRun, now) : '';
+
   // Timer für vergangene Zeit
   useEffect(() => {
-    if (!stats?.activeRun?.startedAt) {
-      setElapsedTime('');
-      return;
-    }
-
-    const updateElapsedTime = () => {
-      const startTime = new Date(stats.activeRun!.startedAt).getTime();
-      const now = Date.now();
-      const totalPausedMs = stats.activeRun!.totalPausedMs || 0;
-
-      let elapsedMs: number;
-
-      if (stats.activeRun!.pausedAt) {
-        // Run ist pausiert - zeige Zeit bis zur Pause
-        const pauseTime = new Date(stats.activeRun!.pausedAt).getTime();
-        elapsedMs = pauseTime - startTime - totalPausedMs;
-      } else {
-        // Run läuft - zeige aktuelle Zeit minus pausierte Zeit
-        elapsedMs = now - startTime - totalPausedMs;
-      }
-
-      const hours = Math.floor(elapsedMs / (1000 * 60 * 60));
-      const minutes = Math.floor((elapsedMs % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((elapsedMs % (1000 * 60)) / 1000);
-
-      if (hours > 0) {
-        setElapsedTime(`${hours}h ${minutes}m ${seconds}s`);
-      } else {
-        setElapsedTime(`${minutes}m ${seconds}s`);
-      }
-    };
-
-    // Sofort aktualisieren
-    updateElapsedTime();
-
     // Wenn pausiert, nicht weiter aktualisieren
-    if (stats.activeRun!.pausedAt) {
+    if (!activeRun?.startedAt || activeRun.pausedAt) {
       return;
     }
 
     // Jede Sekunde aktualisieren
-    const interval = setInterval(updateElapsedTime, 1000);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
 
     return () => clearInterval(interval);
-  }, [stats?.activeRun]);
+  }, [activeRun]);
 
   if (loading) {
     return (
@@ -173,7 +168,6 @@ export default function RunStatsPanel({ isAdmin = false }: RunStatsPanelProps) {
   }
 
   const {
-    activeRun,
     totalRuns,
     failedRuns,
     completedRuns,

@@ -41,30 +41,37 @@ export default function AdminPlayersPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Spieler laden
-  const loadPlayers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/players');
-      const data = await res.json();
-      setPlayers(data);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error loading players:', err);
-      setLoading(false);
-    }
-  }, []);
+  const loadPlayers = useCallback(
+    () =>
+      fetch('/api/admin/players')
+        .then((res) => res.json())
+        .then((data) => {
+          setPlayers(data);
+        })
+        .catch((err) => {
+          console.error('Error loading players:', err);
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    [],
+  );
 
   // Hochgeladene Avatare laden
-  const loadUploadedAvatars = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/avatars/upload');
-      const data = await res.json();
-      if (data.data?.avatars) {
-        setUploadedAvatars(data.data.avatars);
-      }
-    } catch (err) {
-      console.error('Error loading uploaded avatars:', err);
-    }
-  }, []);
+  const loadUploadedAvatars = useCallback(
+    () =>
+      fetch('/api/admin/avatars/upload')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.data?.avatars) {
+            setUploadedAvatars(data.data.avatars);
+          }
+        })
+        .catch((err) => {
+          console.error('Error loading uploaded avatars:', err);
+        }),
+    [],
+  );
 
   // Avatar hochladen - öffnet Crop-Modal
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

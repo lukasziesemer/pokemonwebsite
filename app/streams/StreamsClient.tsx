@@ -100,31 +100,44 @@ export default function StreamsClient() {
     return new Set();
   });
 
-  const fetchStreams = useCallback(async () => {
-    try {
-      const data = await fetchJson<StreamsResponse>('/api/streams');
-      setStreams(data.streams);
-      setActiveRun(data.activeRun);
-      setCurrentRunStats(data.currentRunStats);
+  const fetchStreams = useCallback(
+    () =>
+      fetchJson<StreamsResponse>('/api/streams')
+        .then((data) => {
+          setStreams(data.streams);
+          setActiveRun(data.activeRun);
+          setCurrentRunStats(data.currentRunStats);
 
-      // Player-Colors aus Stream-Daten extrahieren
-      const colors: Record<string, string> = {};
-      for (const stream of data.streams) {
-        colors[stream.player.name] = stream.player.color;
-      }
-      // Auch aus Stats (falls Spieler keinen Stream hat)
-      for (const stat of data.currentRunStats) {
-        if (!colors[stat.playerName]) {
-          colors[stat.playerName] = 'var(--foreground)';
-        }
-      }
-      setPlayerColors(colors);
-    } catch (error) {
-      console.error('Error fetching streams:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+          // Player-Colors aus Stream-Daten extrahieren
+          const colors: Record<string, string> = {};
+          for (const stream of data.streams) {
+            colors[stream.player.name] = stream.player.color;
+          }
+          // Auch aus Stats (falls Spieler keinen Stream hat)
+          for (const stat of data.currentRunStats) {
+            if (!colors[stat.playerName]) {
+              colors[stat.playerName] = 'var(--foreground)';
+            }
+          }
+          setPlayerColors(colors);
+
+          // Veraltete IDs aufräumen wenn Streams sich ändern
+          if (data.streams.length === 0) return;
+          setHiddenStreamIds(prev => {
+            const validIds = new Set(data.streams.map(s => s.id));
+            const cleaned = new Set([...prev].filter(id => validIds.has(id)));
+            if (cleaned.size !== prev.size) return cleaned;
+            return prev;
+          });
+        })
+        .catch((error) => {
+          console.error('Error fetching streams:', error);
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    [],
+  );
 
   const fetchPlayerOptions = useCallback(async () => {
     try {
@@ -160,17 +173,6 @@ export default function StreamsClient() {
   useEffect(() => {
     localStorage.setItem(HIDDEN_STREAMS_KEY, JSON.stringify([...hiddenStreamIds]));
   }, [hiddenStreamIds]);
-
-  // Veraltete IDs aufräumen wenn Streams sich ändern
-  useEffect(() => {
-    if (streams.length === 0) return;
-    setHiddenStreamIds(prev => {
-      const validIds = new Set(streams.map(s => s.id));
-      const cleaned = new Set([...prev].filter(id => validIds.has(id)));
-      if (cleaned.size !== prev.size) return cleaned;
-      return prev;
-    });
-  }, [streams]);
 
   const toggleStreamVisibility = useCallback((streamId: number) => {
     setHiddenStreamIds(prev => {

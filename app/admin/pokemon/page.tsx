@@ -40,18 +40,19 @@ export default function AdminPokemonPage() {
     error instanceof Error ? error.message : 'Unbekannter Fehler';
 
   // Pokémon laden
-  const loadPokemon = async () => {
-    try {
-      const res = await fetch('/api/pokemon');
-      const data: { pokemon: Pokemon[]; count: number } = await res.json();
-      setPokemon(data.pokemon || []);
-      setCount(data.count || 0);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading pokemon:', error);
-      setLoading(false);
-    }
-  };
+  const loadPokemon = () =>
+    fetch('/api/pokemon')
+      .then((res) => res.json())
+      .then((data: { pokemon: Pokemon[]; count: number }) => {
+        setPokemon(data.pokemon || []);
+        setCount(data.count || 0);
+      })
+      .catch((error) => {
+        console.error('Error loading pokemon:', error);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
   useEffect(() => {
     loadPokemon();

@@ -105,6 +105,8 @@ interface PokerouteClientProps {
   currentGameVersion: { key: string; name: string } | null;
 }
 
+const NO_POKEMON: Pokemon[] = [];
+
 export default function PokerouteClient({
   initialPlayers,
   initialRoutes,
@@ -116,26 +118,28 @@ export default function PokerouteClient({
   const { isAdmin } = useAuth();
   const [newRouteName, setNewRouteName] = useState('');
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
-  const [pokemon, setPokemon] = useState<Pokemon[]>([]);
+  const [loadedPokemon, setLoadedPokemon] = useState<Pokemon[]>([]);
   const [pokemonReloadToken, setPokemonReloadToken] = useState(0);
+  const [syncedProps, setSyncedProps] = useState({ initialPlayers, initialRoutes });
 
-  useEffect(() => {
+  // Neue Server-Daten (router.refresh) ersetzen den lokalen Stand.
+  if (syncedProps.initialPlayers !== initialPlayers || syncedProps.initialRoutes !== initialRoutes) {
+    setSyncedProps({ initialPlayers, initialRoutes });
     setPlayers(initialPlayers);
     setRoutes(initialRoutes);
-  }, [initialPlayers, initialRoutes]);
+  }
 
   // Pokémon-Daten werden nur für eingeloggte Admins benötigt.
+  const pokemon = isAdmin ? loadedPokemon : NO_POKEMON;
+
   useEffect(() => {
-    if (!isAdmin) {
-      setPokemon([]);
-      return;
-    }
+    if (!isAdmin) return;
 
     let cancelled = false;
     fetchJson<{ pokemon: Pokemon[] }>('/api/pokemon')
       .then((pokemonData) => {
         if (!cancelled) {
-          setPokemon(pokemonData.pokemon || []);
+          setLoadedPokemon(pokemonData.pokemon || []);
         }
       })
       .catch((err) => {
