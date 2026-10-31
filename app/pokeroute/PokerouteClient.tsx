@@ -9,6 +9,8 @@ import { useRouter } from 'next/navigation';
 import TeamDisplay from '@/components/TeamDisplay';
 import RouteList from '@/components/RouteList';
 import RouteCapturePanel from '@/components/admin/RouteCapturePanel';
+import RouteUndoNotice from '@/components/admin/RouteUndoNotice';
+import type { RouteStatusChange } from '@/components/admin/route-link-ui';
 import PlayerAvatar from '@/components/PlayerAvatar';
 import AppPageTitle from '@/components/layout/AppPageTitle';
 import { PokemonDetailsProvider } from '@/components/pokemon-details';
@@ -120,6 +122,7 @@ export default function PokerouteClient({
   const [newRouteName, setNewRouteName] = useState('');
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
   const [createdRouteId, setCreatedRouteId] = useState<number | null>(null);
+  const [undoableChange, setUndoableChange] = useState<RouteStatusChange | null>(null);
   const [loadedPokemon, setLoadedPokemon] = useState<Pokemon[]>([]);
   const [pokemonReloadToken, setPokemonReloadToken] = useState(0);
   const [syncedProps, setSyncedProps] = useState({ initialPlayers, initialRoutes });
@@ -272,6 +275,7 @@ export default function PokerouteClient({
                   isAdmin={isAdmin}
                   gameVersionKey={currentGameVersion?.key ?? null}
                   onUpdated={reloadData}
+                  onStatusSet={setUndoableChange}
                   pokemon={pokemon}
                 />
               </article>
@@ -321,10 +325,20 @@ export default function PokerouteClient({
             isAdmin={isAdmin}
             gameVersionKey={currentGameVersion?.key ?? null}
             onTeamUpdate={reloadData}
+            onStatusSet={setUndoableChange}
             pokemon={pokemon}
           />
         </div>
       </section>
+
+      {undoableChange ? (
+        <RouteUndoNotice
+          key={`${undoableChange.routeId}-${undoableChange.status}`}
+          change={undoableChange}
+          onUndone={reloadData}
+          onClose={() => setUndoableChange(null)}
+        />
+      ) : null}
     </main>
     </PokemonDetailsProvider>
   );

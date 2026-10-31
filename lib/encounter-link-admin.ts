@@ -4,9 +4,12 @@ export const ENCOUNTER_LINK_ADMIN_ENDPOINT = '/api/admin/encounter-links' as con
 
 export type EncounterLinkAdminAction =
   | { action: 'set-team-slot'; teamSlot: number | null }
+  /** Wie set-team-slot, räumt aber einen belegten Platz: Eine Route im Team tauscht, sonst verdrängt sie die andere. */
+  | { action: 'take-team-slot'; teamSlot: number }
   | { action: 'knockout'; causedBy: string; reason: string | null }
   | { action: 'not-caught'; causedBy: string; reason: string | null }
-  | { action: 'reactivate' }
+  /** teamSlot stellt beim Rückgängigmachen den Platz von vor dem Status wieder her. */
+  | { action: 'reactivate'; teamSlot?: number }
   | { action: 'delete-link' };
 
 export type EncounterLinkAdminActionName = EncounterLinkAdminAction['action'];
@@ -248,6 +251,11 @@ export function parseEncounterLinkAdminAction(
         ok: true,
         action: { action: 'set-team-slot', teamSlot: value.teamSlot },
       };
+    case 'take-team-slot':
+      if (!isTeamSlot(value.teamSlot)) {
+        return { ok: false, error: 'Teamplatz muss zwischen 1 und 6 liegen' };
+      }
+      return { ok: true, action: { action: 'take-team-slot', teamSlot: value.teamSlot } };
     case 'knockout':
     case 'not-caught': {
       const causedBy = requiredText(value.causedBy, 'Verursacher', MAX_CAUSED_BY_LENGTH);
@@ -260,7 +268,13 @@ export function parseEncounterLinkAdminAction(
       };
     }
     case 'reactivate':
-      return { ok: true, action: { action: 'reactivate' } };
+      if (value.teamSlot === undefined || value.teamSlot === null) {
+        return { ok: true, action: { action: 'reactivate' } };
+      }
+      if (!isTeamSlot(value.teamSlot)) {
+        return { ok: false, error: 'Teamplatz muss zwischen 1 und 6 liegen' };
+      }
+      return { ok: true, action: { action: 'reactivate', teamSlot: value.teamSlot } };
     case 'delete-link':
       return { ok: true, action: { action: 'delete-link' } };
     default:
@@ -274,6 +288,7 @@ export function buildEncounterLinkUpdate(
 ): EncounterLinkUpdateData {
   switch (action.action) {
     case 'set-team-slot':
+    case 'take-team-slot':
       return { teamSlot: action.teamSlot };
     case 'knockout':
       return {
@@ -301,7 +316,7 @@ export function buildEncounterLinkUpdate(
       };
     case 'reactivate':
       return {
-        teamSlot: null,
+        teamSlot: action.teamSlot ?? null,
         isKnockedOut: false,
         koCausedBy: null,
         koReason: null,

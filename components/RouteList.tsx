@@ -17,6 +17,7 @@ import {
   getNextTeamSlot,
   getOccupiedTeamSlots,
   type EncounterRouteLinkTarget,
+  type RouteStatusChange,
 } from './admin/route-link-ui';
 import { PokemonDetailsTrigger } from './pokemon-details';
 import PlayerAvatar from './PlayerAvatar';
@@ -87,6 +88,7 @@ interface RouteListProps {
   isAdmin?: boolean;
   gameVersionKey?: string | null;
   onTeamUpdate?: () => void;
+  onStatusSet?: (change: RouteStatusChange) => void;
   pokemon?: PokemonListItem[];
 }
 
@@ -288,6 +290,7 @@ const RouteList = memo(function RouteList({
   isAdmin = false,
   gameVersionKey = null,
   onTeamUpdate,
+  onStatusSet,
   pokemon = [],
 }: RouteListProps) {
   // State
@@ -543,6 +546,7 @@ const RouteList = memo(function RouteList({
                         disabled={processing}
                         onUpdated={() => { void onTeamUpdate?.(); }}
                         onDeleted={() => { void onTeamUpdate?.(); }}
+                        onStatusSet={onStatusSet}
                       />
                     ) : null}
                   </div>

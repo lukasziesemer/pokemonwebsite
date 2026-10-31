@@ -289,6 +289,118 @@ describe('executeEncounterLinkAdminAction', () => {
     });
   });
 
+  it('replaces the route on an occupied slot in one transaction', async () => {
+    const occupant = [
+      member(3, 1, { routeId: 99, route: { id: 99, name: 'Route 99' } }),
+      member(4, 2, { routeId: 99, route: { id: 99, name: 'Route 99' } }),
+    ];
+    mocks.tx.encounter.findMany
+      .mockResolvedValueOnce([member(1, 1), member(2, 2)])
+      .mockResolvedValueOnce([member(1, 1, { teamSlot: 2 }), member(2, 2, { teamSlot: 2 })])
+      .mockResolvedValueOnce(occupant);
+    mocks.tx.encounter.findFirst.mockResolvedValue({ routeId: 99, route: { name: 'Route 99' } });
+
+    const result = await executeEncounterLinkAdminAction(10, { action: 'take-team-slot', teamSlot: 2 });
+
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 99 },
+      data: { teamSlot: null },
+    });
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 10 },
+      data: { teamSlot: 2 },
+    });
+    // Die Tabelle aktualisiert ihren Stand aus der Antwort, auch für die verdrängte Route.
+    expect(result).toMatchObject({ ok: true, response: { count: 2 } });
+    expect(result.ok && result.response.encounters.map((encounter) => encounter.id)).toEqual([1, 2, 3, 4]);
+    expect(mocks.emitEvent).toHaveBeenCalledWith(
+      'team_link_boxed',
+      expect.objectContaining({ routeName: 'Route 99', teamSlot: 2 }),
+    );
+    expect(mocks.emitEvent).toHaveBeenCalledWith(
+      'team_link_added',
+      expect.objectContaining({ routeName: 'Route 10', teamSlot: 2 }),
+    );
+  });
+
+  it('swaps two team routes without a team reveal', async () => {
+    mocks.tx.encounter.findMany
+      .mockResolvedValueOnce([member(1, 1, { teamSlot: 1 }), member(2, 2, { teamSlot: 1 })])
+      .mockResolvedValueOnce([member(1, 1, { teamSlot: 5 }), member(2, 2, { teamSlot: 5 })])
+      .mockResolvedValueOnce([member(3, 1, { teamSlot: 1 })]);
+    mocks.tx.encounter.findFirst.mockResolvedValue({ routeId: 99, route: { name: 'Route 99' } });
+
+    const result = await executeEncounterLinkAdminAction(10, { action: 'take-team-slot', teamSlot: 5 });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 99 },
+      data: { teamSlot: 1 },
+    });
+    expect(mocks.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it('takes a free slot like a normal assignment', async () => {
+    arrangeGroup([member(1, 1), member(2, 2)], [member(1, 1, { teamSlot: 6 }), member(2, 2, { teamSlot: 6 })]);
+
+    const result = await executeEncounterLinkAdminAction(10, { action: 'take-team-slot', teamSlot: 6 });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.emitEvent).toHaveBeenCalledWith('team_link_added', expect.anything());
+  });
+
+  it('does not displace anyone for an inactive or incomplete route', async () => {
+    const date = new Date('2026-08-10T12:00:00.000Z');
+    const knockedOut = { isKnockedOut: true, koCausedBy: 'Lukas', koDate: date };
+    mocks.tx.encounter.findMany.mockResolvedValueOnce([member(1, 1, knockedOut), member(2, 2, knockedOut)]);
+    expect(
+      await executeEncounterLinkAdminAction(10, { action: 'take-team-slot', teamSlot: 2 }),
+    ).toMatchObject({ ok: false, status: 409 });
+
+    mocks.tx.encounter.findMany.mockResolvedValueOnce([member(1, 1)]);
+    expect(
+      await executeEncounterLinkAdminAction(10, { action: 'take-team-slot', teamSlot: 2 }),
+    ).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('1 von 2') });
+
+    expect(mocks.tx.encounter.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('restores the team slot when undoing a knockout, without a team reveal', async () => {
+    const date = new Date('2026-08-10T12:00:00.000Z');
+    const knockedOut = { isKnockedOut: true, koCausedBy: 'Lukas', koDate: date };
+    arrangeGroup(
+      [member(1, 1, knockedOut), member(2, 2, knockedOut)],
+      [member(1, 1, { teamSlot: 3 }), member(2, 2, { teamSlot: 3 })],
+    );
+
+    const result = await executeEncounterLinkAdminAction(10, { action: 'reactivate', teamSlot: 3 });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.tx.encounter.updateMany).toHaveBeenCalledWith({
+      where: { routeId: 10 },
+      data: expect.objectContaining({ teamSlot: 3, isKnockedOut: false, koCausedBy: null }),
+    });
+    expect(mocks.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it('keeps the knockout when the old team slot is taken in the meantime', async () => {
+    const date = new Date('2026-08-10T12:00:00.000Z');
+    const knockedOut = { isKnockedOut: true, koCausedBy: 'Lukas', koDate: date };
+    mocks.tx.encounter.findMany.mockResolvedValueOnce([member(1, 1, knockedOut), member(2, 2, knockedOut)]);
+    mocks.tx.encounter.findFirst.mockResolvedValue({ routeId: 99, route: { name: 'Route 99' } });
+
+    const result = await executeEncounterLinkAdminAction(10, { action: 'reactivate', teamSlot: 3 });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      conflict: { routeId: 99, routeName: 'Route 99', teamSlot: 3 },
+    });
+    expect(mocks.tx.encounter.updateMany).not.toHaveBeenCalled();
+  });
+
   it('deletes an inconsistent link atomically by routeId', async () => {
     mocks.tx.encounter.findMany.mockResolvedValueOnce([
       member(1, 1, { teamSlot: 1 }),
