@@ -1,0 +1,92 @@
+import { expect, test, type Page } from '@playwright/test';
+
+const adminUsername = process.env.ADMIN_USERNAME;
+const adminPassword = process.env.ADMIN_PASSWORD;
+
+async function openRoutes(page: Page) {
+  await page.goto('/pokeroute');
+  await expect(page.getByRole('heading', { name: 'Routen & Encounters' })).toBeVisible();
+  // /pokeroute rendert serverseitig aus der Datenbank; ohne Routen gibt es kein Raster zu messen.
+  test.skip(
+    (await page.locator('.route-list-row').count()) === 0,
+    'Der aktuelle Spielstand enthält keine Routen; Testdaten kommen aus e2e/seed-test-db.mjs.',
+  );
+}
+
+async function expectNoPageOverflow(page: Page) {
+  const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+}
+
+for (const width of [390, 360]) {
+  test.describe(`Routen bei ${width} px`, () => {
+    test.use({ viewport: { width, height: 844 } });
+
+    test.describe('öffentlich', () => {
+      test.use({ storageState: { cookies: [], origins: [] } });
+
+      test('scrollt nicht horizontal und zeigt alle Spieler ohne Seitwärtswischen', async ({ page }) => {
+        await openRoutes(page);
+        await expectNoPageOverflow(page);
+
+        // Ein eigener Scroll-Container würde den Seitenüberlauf nur verstecken.
+        const playerHeadings = page.locator('.route-list-row h4');
+        expect(await playerHeadings.count()).toBeGreaterThan(0);
+        for (const heading of await playerHeadings.all()) {
+          const box = await heading.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        }
+      });
+
+      test('öffnet Encounter-Karten per Tippen', async ({ page }) => {
+        await openRoutes(page);
+
+        await page.locator('.route-list-row').getByRole('button', { name: /: Details öffnen$/ }).first().click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+      });
+    });
+
+    test.describe('als Admin', () => {
+      test.skip(
+        !adminUsername || !adminPassword,
+        'ADMIN_USERNAME und ADMIN_PASSWORD fehlen; ein echter Admin-Login kann nicht sicher geprüft werden.',
+      );
+
+      test('hält Encounter-Menüs im Viewport', async ({ page }) => {
+        await openRoutes(page);
+        await expectNoPageOverflow(page);
+
+        const trigger = page
+          .locator('.route-list-row')
+          .getByRole('button', { name: /^(?!Link ).+ verwalten$/ })
+          .first();
+        await trigger.click();
+
+        const menu = page.getByRole('menu');
+        await expect(menu).toBeVisible();
+        const box = await menu.boundingBox();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        await expectNoPageOverflow(page);
+      });
+
+      test('schneidet die Pokémon-Suche freier Slots nicht ab', async ({ page }) => {
+        await openRoutes(page);
+
+        const search = page.getByPlaceholder('Pokemon suchen...').first();
+        test.skip((await search.count()) === 0, 'Der aktuelle Spielstand enthält keinen freien Slot.');
+
+        await search.fill('a');
+        const firstResult = page.locator('.route-list-row button', { hasText: '#' }).first();
+        await expect(firstResult).toBeVisible();
+        // Liegt das Ergebnis in einem Clip-Container, trifft der Klickpunkt nicht mehr den Button.
+        await firstResult.click({ trial: true });
+        await expectNoPageOverflow(page);
+      });
+    });
+  });
+}

@@ -612,10 +612,8 @@ const RouteList = memo(function RouteList({
               {isNotCaught && notCaughtInfo && <StatusInfoBox type="notCaught" info={notCaughtInfo} />}
 
               {/* Encounters */}
-              <div
-                className="grid min-w-[48rem] border-l border-t border-[var(--border-default)]"
-                style={{ gridTemplateColumns: `repeat(${Math.max(players.length, 1)}, minmax(14rem, 1fr))` }}
-              >
+              {/* Spalten brechen um statt zu scrollen: ein overflow-Container würde die Pokémon-Suche abschneiden. */}
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(14rem,100%),1fr))] border-l border-t border-[var(--border-default)]">
                 {players.map((player) => {
                   const playerEncounters = route.encounters.filter((e) => e.player.id === player.id);
                   const hasEncounter = playerEncounters.length > 0;
