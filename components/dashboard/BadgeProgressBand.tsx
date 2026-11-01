@@ -2,16 +2,8 @@
 
 import Image from 'next/image';
 import type { CSSProperties } from 'react';
-import { useState } from 'react';
 import type { DashboardData } from '@/app/dashboard-data';
-import { getLevelCapsForGame } from '@/lib/badge-data';
-import { useAuth } from '@/lib/contexts/AuthContext';
-
-interface BadgeUpdateResponse {
-  data?: {
-    badgesEarned?: number;
-  };
-}
+import { useBadgeProgress } from './useBadgeProgress';
 
 type BadgeProgressStyle = CSSProperties & {
   '--badge-track-inset': string;
@@ -19,24 +11,16 @@ type BadgeProgressStyle = CSSProperties & {
 };
 
 export default function BadgeProgressBand({ data }: { data: DashboardData }) {
-  const { isAdmin } = useAuth();
-  const runId = data.run?.id;
-  const serverEarned = data.run?.badgesEarned ?? 0;
-  const [earned, setEarned] = useState(serverEarned);
-  const [synced, setSynced] = useState({ runId, serverEarned });
-  const [savingBadge, setSavingBadge] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Neue Dashboard-Daten ersetzen den lokalen Stand.
-  if (synced.runId !== runId || synced.serverEarned !== serverEarned) {
-    setSynced({ runId, serverEarned });
-    setEarned(serverEarned);
-  }
-
-  const total = data.badges.length;
-  const levelCaps = data.run?.gameVersionKey
-    ? getLevelCapsForGame(data.run.gameVersionKey)
-    : null;
+  const {
+    canEdit,
+    earned,
+    error,
+    getBadgeActionLabel,
+    levelCaps,
+    savingBadge,
+    total,
+    updateBadgeProgress,
+  } = useBadgeProgress(data);
   const trackInset = total > 0 ? 100 / (total * 2) : 0;
   const trackSpan = 100 - trackInset * 2;
   const progressWidth =
@@ -46,46 +30,6 @@ export default function BadgeProgressBand({ data }: { data: DashboardData }) {
   const progressStyle: BadgeProgressStyle = {
     '--badge-track-inset': `${trackInset}%`,
     '--badge-progress-width': `${progressWidth}%`,
-  };
-  const canEdit = Boolean(
-    isAdmin
-      && data.run
-      && (data.run.status === 'active' || data.run.status === 'paused')
-      && total > 0,
-  );
-
-  const updateBadgeProgress = async (position: number) => {
-    if (!canEdit || !data.run || savingBadge !== null) return;
-
-    const previousCount = earned;
-    const nextCount = position <= earned ? position - 1 : position;
-    setEarned(nextCount);
-    setSavingBadge(position);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/runs/badges', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'set',
-          badgesEarned: nextCount,
-          runId: data.run.id,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Der Ordenfortschritt konnte nicht gespeichert werden.');
-      }
-
-      const result = await response.json() as BadgeUpdateResponse;
-      setEarned(result.data?.badgesEarned ?? nextCount);
-    } catch (updateError) {
-      setEarned(previousCount);
-      setError(updateError instanceof Error ? updateError.message : 'Speichern fehlgeschlagen.');
-    } finally {
-      setSavingBadge(null);
-    }
   };
 
   return (
@@ -103,9 +47,7 @@ export default function BadgeProgressBand({ data }: { data: DashboardData }) {
           {data.badges.map((badge, index) => {
             const isEarned = badge.position <= earned;
             const levelCap = levelCaps?.[index] ?? null;
-            const actionLabel = isEarned
-              ? `${badge.name} abwählen. Der Fortschritt wird auf ${badge.position - 1} von ${total} gesetzt.`
-              : `${badge.name} auswählen. Der Fortschritt wird auf ${badge.position} von ${total} gesetzt.`;
+            const actionLabel = getBadgeActionLabel(badge);
             const badgeIcon = (
               <Image src={badge.imagePath} alt="" width={48} height={48} />
             );

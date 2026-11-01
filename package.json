@@ -24,7 +24,8 @@
     "react-dom": "19.2.3",
     "react-easy-crop": "^5.5.6",
     "recharts": "^3.4.1",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -33,6 +34,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.170.0",
     "baseline-browser-mapping": "^2.9.19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",

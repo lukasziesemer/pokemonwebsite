@@ -5,7 +5,7 @@ Eine vollstaendige Web-Applikation zur Dokumentation eines Parallel-Playthroughs
 ## Features
 
 - **Oeffentliche Ansichten:**
-  - **Dashboard** (`/`): Teams aller Spieler, Orden-Fortschritt mit Level-Caps, Defensiv-Abdeckung und Gesamtbilanz des aktuellen Runs
+  - **Dashboard** (`/`): 3D-Arena (Three.js) mit den Teams aller Spieler und dem Orden-Fortschritt mit Level-Caps, darunter Defensiv-Abdeckung und Gesamtbilanz des aktuellen Runs; ohne WebGL erscheint die klassische Ansicht
   - **Pokeroute** (`/pokeroute`): Uebersicht der aktuellen Teams und aller gefangenen Pokemon pro Route und Spieler
   - **Pokeradar** (`/pokeradar`): Vergleichstool fuer Basiswerte, Profile (Radar Chart) und Typen; Teams als Quelle waehlbar, Vergleichssets werden lokal im Browser gespeichert
   - **Tabelle** (`/tabelle`): Tabellarische Uebersicht aller Encounters

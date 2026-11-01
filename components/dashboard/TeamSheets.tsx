@@ -85,6 +85,23 @@ export function TeamSheet({ player }: { player: DashboardPlayer }) {
   );
 }
 
+function PlayerCoverage({ player }: { player: DashboardPlayer }) {
+  return (
+    <details className="dashboard-defense-disclosure">
+      <summary>
+        <span>
+          <strong>Defensive Coverage {player.name}</strong>
+          <small>{player.team.length} Pokémon · 18 Angriffstypen</small>
+        </span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m8 10 4 4 4-4" />
+        </svg>
+      </summary>
+      <DefensiveCoverageMap player={player} />
+    </details>
+  );
+}
+
 function PlayerTeamCoverage({ player }: { player: DashboardPlayer }) {
   return (
     <div
@@ -92,19 +109,29 @@ function PlayerTeamCoverage({ player }: { player: DashboardPlayer }) {
       style={{ '--player-accent': player.color } as CSSProperties}
     >
       <TeamSheet player={player} />
-      <details className="dashboard-defense-disclosure">
-        <summary>
-          <span>
-            <strong>Defensive Coverage {player.name}</strong>
-            <small>{player.team.length} Pokémon · 18 Angriffstypen</small>
-          </span>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m8 10 4 4 4-4" />
-          </svg>
-        </summary>
-        <DefensiveCoverageMap player={player} />
-      </details>
+      <PlayerCoverage player={player} />
     </div>
+  );
+}
+
+export function TeamCoverageSection({ players }: { players: DashboardPlayer[] }) {
+  if (players.length === 0) return null;
+
+  return (
+    <section aria-labelledby="team-coverage-title">
+      <h2 id="team-coverage-title" className="app-section-title">Defensive Coverage</h2>
+      <div className="dashboard-player-team-stack">
+        {players.map(player => (
+          <div
+            key={player.id}
+            className="dashboard-player-team-block"
+            style={{ '--player-accent': player.color } as CSSProperties}
+          >
+            <PlayerCoverage player={player} />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
