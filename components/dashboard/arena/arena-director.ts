@@ -6,6 +6,8 @@ export type ArenaShot =
 
 const DEFAULT_HOLD_MS = 4_500;
 const RUN_END_HOLD_MS = 7_000;
+const MIN_BOARD_DISTANCE = 74;
+const BOARD_FRAME_WIDTH = 74;
 
 /** Welche Einstellung zeigt, was gerade passiert ist. */
 export function getArenaShotForEvent(
@@ -28,6 +30,12 @@ export function getArenaShotForEvent(
       // Eine Bindung betrifft alle Spieler, nur die Totale zeigt alle Podeste zugleich.
       return { kind: 'total' };
   }
+}
+
+/** Mindestabstand, bei dem die ganze Anzeigetafel samt Rand ins Bild passt. */
+export function getArenaBoardDistance(fovDegrees: number, aspect: number): number {
+  const halfTan = Math.tan((fovDegrees / 2) * (Math.PI / 180));
+  return Math.max(MIN_BOARD_DISTANCE, BOARD_FRAME_WIDTH / (2 * halfTan * aspect));
 }
 
 /** So lange bleibt die Einstellung stehen, nachdem das Overlay verschwunden ist. */

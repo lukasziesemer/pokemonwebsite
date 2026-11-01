@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getArenaShotForEvent, getArenaShotHoldMs } from '@/components/dashboard/arena/arena-director';
+import { getArenaBoardDistance, getArenaShotForEvent, getArenaShotHoldMs } from '@/components/dashboard/arena/arena-director';
 import type { EventType, GameEvent } from '@/lib/event-store';
 
 const players = [{ name: 'Lukas' }, { name: 'Thorben' }, { name: 'Timo' }];
@@ -35,6 +35,22 @@ describe('getArenaShotForEvent', () => {
 
   it.each(['run_failed', 'run_completed'] as const)('rises to the crane shot for %s', type => {
     expect(getArenaShotForEvent(createEvent(type), players)).toEqual({ kind: 'crane' });
+  });
+});
+
+describe('getArenaBoardDistance', () => {
+  it('keeps the regular distance on wide screens', () => {
+    expect(getArenaBoardDistance(36, 16 / 9)).toBe(74);
+  });
+
+  it('moves back until the whole board fits on a phone', () => {
+    const aspect = 0.46;
+    const fov = 52;
+    const distance = getArenaBoardDistance(fov, aspect);
+    const visibleWidth = 2 * distance * Math.tan((fov / 2) * (Math.PI / 180)) * aspect;
+
+    expect(distance).toBeGreaterThan(74);
+    expect(visibleWidth).toBeGreaterThanOrEqual(73.9);
   });
 });
 

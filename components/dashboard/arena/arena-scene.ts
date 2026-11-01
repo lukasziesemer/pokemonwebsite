@@ -11,7 +11,7 @@ import {
   seeded,
   type ToonFactory,
 } from './arena-kit';
-import type { ArenaShot } from './arena-director';
+import { getArenaBoardDistance, type ArenaShot } from './arena-director';
 import { getArenaAnchors, resolveArenaFocus, type ArenaAnchor, type ArenaPlayer, type ArenaPokemon, type ArenaSceneData } from './arena-model';
 import { createArenaPost } from './arena-post';
 import { buildStadium, SUN_POSITION } from './arena-stadium';
@@ -494,7 +494,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
   const totalShot = { position: new THREE.Vector3(0, 16, 90), target: new THREE.Vector3(0, 12.4, -8) };
   const craneShot = { position: INTRO_START, target: totalShot.target };
   const boardShot = {
-    position: stadium.scoreboardCenter.clone().add(new THREE.Vector3(0, -6, 74)),
+    position: stadium.scoreboardCenter.clone(),
     target: stadium.scoreboardCenter,
   };
   let shot = totalShot;
@@ -556,6 +556,8 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
     const fit = Math.max(1, 92 / (2 * 98 * halfTan * camera.aspect));
     playerFit = Math.max(1, (portrait ? 25 : 31) / (2 * 47 * halfTan * camera.aspect));
     totalShot.position.set(0, 16, Math.min(106, 90 * fit));
+    boardShot.position.copy(stadium.scoreboardCenter)
+      .add(new THREE.Vector3(0, -6, getArenaBoardDistance(camera.fov, camera.aspect)));
 
     requestFocus(focus);
     applyFocus(focus);

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { DashboardData, DashboardPlayer } from '@/app/dashboard-data';
 import { PokemonDetailsTrigger, usePokemonDetails } from '@/components/pokemon-details';
 import { useGameEvents } from '@/lib/contexts/EventContext';
+import type { GameEvent } from '@/lib/event-store';
 import { getAverageTeamStrength } from '@/lib/team-base-stats';
 import { getGermanTypeName } from '@/lib/typeEffectiveness';
 import { formatDuration, statusTone } from '../run-format';
@@ -144,7 +145,7 @@ export default function DashboardArena({ data, fallback, children }: DashboardAr
   const [focus, setFocus] = useState(TOTAL_VIEW);
   const [failed, setFailed] = useState(false);
   const [directorShot, setDirectorShot] = useState<ArenaShot | null>(null);
-  const [directedEvent, setDirectedEvent] = useState(currentEvent);
+  const [directedEvent, setDirectedEvent] = useState<GameEvent | null>(null);
 
   // Die Kamera fliegt schon unter dem Overlay los, wenn es verschwindet, steht sie am Ort des Geschehens.
   if (currentEvent && currentEvent !== directedEvent) {
