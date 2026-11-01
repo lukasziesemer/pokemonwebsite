@@ -11,7 +11,7 @@ import {
   seeded,
   type ToonFactory,
 } from './arena-kit';
-import { getArenaAnchors, type ArenaAnchor, type ArenaPlayer, type ArenaPokemon, type ArenaSceneData } from './arena-model';
+import { getArenaAnchors, resolveArenaFocus, type ArenaAnchor, type ArenaPlayer, type ArenaPokemon, type ArenaSceneData } from './arena-model';
 import { createArenaPost } from './arena-post';
 import { buildStadium, SUN_POSITION } from './arena-stadium';
 
@@ -499,6 +499,12 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
     needsFrames = Math.max(needsFrames, 4);
   };
 
+  const requestFocus = (requested: number) => {
+    const next = resolveArenaFocus(requested, focus, anchors.length, portrait);
+    if (next !== requested) options.onFocusChange(next);
+    if (next !== focus) applyFocus(next);
+  };
+
   function layout() {
     viewWidth = Math.max(1, host.clientWidth);
     viewHeight = Math.max(1, host.clientHeight);
@@ -517,14 +523,8 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
     playerFit = Math.max(1, (portrait ? 25 : 31) / (2 * 47 * halfTan * camera.aspect));
     totalShot.position.set(0, 16, Math.min(106, 90 * fit));
 
-    // Hochkant passt die Totale nicht ins Bild, dort steht immer ein Spieler im Fokus.
-    if (portrait && focus < 0 && anchors.length > 0) {
-      const preferred = Math.min(1, anchors.length - 1);
-      applyFocus(preferred);
-      options.onFocusChange(preferred);
-    } else {
-      applyFocus(focus);
-    }
+    requestFocus(focus);
+    applyFocus(focus);
     needsFrames = Math.max(needsFrames, 4);
   }
 
@@ -693,9 +693,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
 
   return {
     update: data => applyData(data, null),
-    setFocus: next => {
-      if (next !== focus) applyFocus(next);
-    },
+    setFocus: requestFocus,
     dispose: () => {
       disposed = true;
       cancelAnimationFrame(frameRequest);

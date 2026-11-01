@@ -66,6 +66,17 @@ export function getArenaRosterKey(players: readonly Pick<ArenaPlayer, 'id' | 'na
   return players.map(player => `${player.id}:${player.name}:${player.color}`).join('|');
 }
 
+/** Hochkant passt die Totale nicht ins Bild, dort bleibt immer ein Spieler im Fokus. */
+export function resolveArenaFocus(
+  requested: number,
+  current: number,
+  playerCount: number,
+  portrait: boolean,
+): number {
+  if (!portrait || requested >= 0 || playerCount === 0) return requested;
+  return current >= 0 ? current : Math.min(1, playerCount - 1);
+}
+
 export function getArenaAnchors(count: number): ArenaAnchor[] {
   if (count === 1) return [{ x: 0, z: -6, yaw: 0, scale: 1.2 }];
   if (count === 2) {

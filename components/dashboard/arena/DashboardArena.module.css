@@ -349,6 +349,13 @@
   }
 }
 
+/* Hochkant bleibt immer ein Spieler im Fokus. */
+@media (orientation: portrait) {
+  .total {
+    display: none;
+  }
+}
+
 @media (max-width: 767px) {
   .arena {
     height: calc(100svh - 59px - 64px);

@@ -3,6 +3,7 @@ import type { DashboardData, DashboardPlayer, DashboardPokemon } from '@/app/das
 import {
   getArenaAnchors,
   getArenaRosterKey,
+  resolveArenaFocus,
   TEAM_SLOT_COUNT,
   toArenaSceneData,
 } from '@/components/dashboard/arena/arena-model';
@@ -98,6 +99,29 @@ describe('getArenaRosterKey', () => {
 
     expect(getArenaRosterKey([createPlayer(), createPlayer({ id: 2 })])).not.toBe(base);
     expect(getArenaRosterKey([createPlayer({ color: '#000000' })])).not.toBe(base);
+  });
+});
+
+describe('resolveArenaFocus', () => {
+  it('allows the total view in landscape', () => {
+    expect(resolveArenaFocus(-1, 2, 3, false)).toBe(-1);
+  });
+
+  it('keeps the focused player when the total view is requested in portrait', () => {
+    expect(resolveArenaFocus(-1, 2, 3, true)).toBe(2);
+  });
+
+  it('starts portrait on the middle player', () => {
+    expect(resolveArenaFocus(-1, -1, 3, true)).toBe(1);
+    expect(resolveArenaFocus(-1, -1, 1, true)).toBe(0);
+  });
+
+  it('follows an explicit player choice in portrait', () => {
+    expect(resolveArenaFocus(0, 2, 3, true)).toBe(0);
+  });
+
+  it('stays in the total view without players', () => {
+    expect(resolveArenaFocus(-1, -1, 0, true)).toBe(-1);
   });
 });
 
