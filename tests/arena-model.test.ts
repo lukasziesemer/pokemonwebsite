@@ -82,7 +82,7 @@ describe('toArenaSceneData', () => {
   it('handles a dashboard without a run', () => {
     const scene = toArenaSceneData(createData([]));
 
-    expect(scene).toEqual({ runNumber: null, gameName: null, players: [] });
+    expect(scene).toEqual({ runNumber: null, gameName: null, badgesEarned: 0, badgeTotal: 0, players: [] });
   });
 });
 
