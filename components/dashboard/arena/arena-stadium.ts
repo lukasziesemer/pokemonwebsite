@@ -474,10 +474,12 @@ function createScoreboard(
 
   let drawnKey = '';
 
-  return (data: ArenaSceneData) => {
+  const draw = (data: ArenaSceneData) => {
     const key = JSON.stringify([
       data.runNumber,
       data.gameName,
+      data.badgesEarned,
+      data.badgeTotal,
       data.players.map(player => [player.knockedOut, player.slots.map(Boolean)]),
     ]);
     if (key === drawnKey) return;
@@ -497,7 +499,14 @@ function createScoreboard(
     if (data.gameName) {
       ctx.textAlign = 'right';
       ctx.font = `400 56px ${displayFont}`;
-      ctx.fillText(data.gameName, width - 34, 76, 800);
+      ctx.fillText(data.gameName, width - 34, 76, 620);
+    }
+    if (data.badgeTotal > 0) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd34d';
+      ctx.font = `400 56px ${displayFont}`;
+      ctx.fillText(`${data.badgesEarned}/${data.badgeTotal} Orden`, 450, 76);
+      ctx.fillStyle = '#fff';
     }
 
     const rowHeight = Math.min(124, 424 / Math.max(1, data.players.length));
@@ -518,7 +527,7 @@ function createScoreboard(
       ctx.textAlign = 'left';
       ctx.fillStyle = player.color;
       ctx.font = `400 ${fontSize}px ${displayFont}`;
-      ctx.fillText(player.name, 34, y, 380);
+      ctx.fillText(player.name, 34, y, 360);
       player.slots.forEach((pokemon, slot) => miniBall(446 + slot * ballRadius * 2.48, y - fontSize * 0.34, Boolean(pokemon)));
       ctx.textAlign = 'right';
       ctx.fillStyle = '#fff';
@@ -526,6 +535,8 @@ function createScoreboard(
     });
     texture.needsUpdate = true;
   };
+
+  return { draw, center: board.position.clone() };
 }
 
 export function buildStadium(options: StadiumOptions) {
@@ -540,12 +551,13 @@ export function buildStadium(options: StadiumOptions) {
   addFlags(options, topRadius, topHeight, windTime);
   const updateBirds = addBirds(scene);
   const billboards = addTorches(scene, toon, flameMaterial, topRadius, topHeight);
-  const drawScoreboard = createScoreboard(options, topRadius, topHeight);
+  const scoreboard = createScoreboard(options, topRadius, topHeight);
 
   return {
     windTime,
     flameMaterial,
-    drawScoreboard,
+    drawScoreboard: scoreboard.draw,
+    scoreboardCenter: scoreboard.center,
     tick(time: number, camera: THREE.Camera) {
       windTime.value = time;
       flameTime.value = time;

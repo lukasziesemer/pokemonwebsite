@@ -2,13 +2,15 @@
 
 import Image from 'next/image';
 import { Lilita_One, Nunito } from 'next/font/google';
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { DashboardData, DashboardPlayer } from '@/app/dashboard-data';
 import { PokemonDetailsTrigger, usePokemonDetails } from '@/components/pokemon-details';
+import { useGameEvents } from '@/lib/contexts/EventContext';
 import { getAverageTeamStrength } from '@/lib/team-base-stats';
 import { getGermanTypeName } from '@/lib/typeEffectiveness';
 import { formatDuration, statusTone } from '../run-format';
 import { useBadgeProgress } from '../useBadgeProgress';
+import { getArenaShotForEvent, getArenaShotHoldMs, type ArenaShot } from './arena-director';
 import { getArenaRosterKey, TEAM_SLOT_COUNT, toArenaSceneData } from './arena-model';
 import type { ArenaSceneHandle } from './arena-scene';
 import styles from './DashboardArena.module.css';
@@ -136,19 +138,34 @@ interface DashboardArenaProps {
 
 export default function DashboardArena({ data, fallback, children }: DashboardArenaProps) {
   const { openPokemonDetails } = usePokemonDetails();
+  const { currentEvent } = useGameEvents();
   const sceneData = useMemo(() => toArenaSceneData(data), [data]);
   const rosterKey = getArenaRosterKey(sceneData.players);
   const [focus, setFocus] = useState(TOTAL_VIEW);
   const [failed, setFailed] = useState(false);
+  const [directorShot, setDirectorShot] = useState<ArenaShot | null>(null);
+  const [directedEvent, setDirectedEvent] = useState(currentEvent);
+
+  // Die Kamera fliegt schon unter dem Overlay los, wenn es verschwindet, steht sie am Ort des Geschehens.
+  if (currentEvent && currentEvent !== directedEvent) {
+    setDirectedEvent(currentEvent);
+    setDirectorShot(getArenaShotForEvent(currentEvent, data.players));
+  }
+
+  // Wer selbst wählt, übernimmt von der Regie.
+  const chooseFocus = useCallback((next: number) => {
+    setDirectorShot(null);
+    setFocus(next);
+  }, []);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const tagsRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<ArenaSceneHandle | null>(null);
-  const latest = useRef({ data, sceneData, focus, openPokemonDetails });
+  const latest = useRef({ data, sceneData, focus, directorShot, openPokemonDetails });
 
   useEffect(() => {
-    latest.current = { data, sceneData, focus, openPokemonDetails };
-  }, [data, focus, openPokemonDetails, sceneData]);
+    latest.current = { data, sceneData, focus, directorShot, openPokemonDetails };
+  }, [data, directorShot, focus, openPokemonDetails, sceneData]);
 
   useEffect(() => {
     const host = stageRef.current;
@@ -172,7 +189,7 @@ export default function DashboardArena({ data, fallback, children }: DashboardAr
         tagClassName: styles.tag,
         hotTagClassName: styles.tagHot,
         reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-        onFocusChange: setFocus,
+        onFocusChange: chooseFocus,
         onPokemonActivate: (playerIndex, slotIndex) => {
           const pokemon = latest.current.data.players[playerIndex]?.team
             .find(member => member.teamSlot === slotIndex + 1);
@@ -181,6 +198,7 @@ export default function DashboardArena({ data, fallback, children }: DashboardAr
         onFailure: () => setFailed(true),
       });
       scene.setFocus(latest.current.focus);
+      scene.playShot(latest.current.directorShot);
       sceneRef.current = scene;
     }).catch(error => {
       console.error('Arena konnte nicht gestartet werden:', error);
@@ -192,11 +210,20 @@ export default function DashboardArena({ data, fallback, children }: DashboardAr
       sceneRef.current = null;
       scene?.dispose();
     };
-  }, [failed, rosterKey]);
+  }, [chooseFocus, failed, rosterKey]);
+
+  // Unter dem Overlay bliebe Rückruf und Rausschicken ungesehen, die Szene wartet deshalb darauf.
+  useEffect(() => {
+    if (!currentEvent) sceneRef.current?.update(sceneData);
+  }, [currentEvent, sceneData]);
 
   useEffect(() => {
-    sceneRef.current?.update(sceneData);
-  }, [sceneData]);
+    sceneRef.current?.playShot(directorShot);
+    if (!directorShot || currentEvent) return;
+
+    const timer = window.setTimeout(() => setDirectorShot(null), getArenaShotHoldMs(directorShot));
+    return () => window.clearTimeout(timer);
+  }, [currentEvent, directorShot]);
 
   useEffect(() => {
     sceneRef.current?.setFocus(focus);
@@ -206,6 +233,7 @@ export default function DashboardArena({ data, fallback, children }: DashboardAr
 
   const { run, players, playerTotals } = data;
   const activeFocus = focus < players.length ? focus : TOTAL_VIEW;
+  const spotlight = directorShot?.kind === 'player' ? directorShot.playerIndex : activeFocus;
   const totalKnockedOut = players.reduce((sum, player) => sum + player.stats.knockedOut, 0);
 
   return (
@@ -241,16 +269,16 @@ export default function DashboardArena({ data, fallback, children }: DashboardAr
               key={player.id}
               player={player}
               losses={playerTotals.find(total => total.id === player.id)?.losses ?? null}
-              focused={activeFocus === index}
-              onToggle={() => setFocus(activeFocus === index ? TOTAL_VIEW : index)}
+              focused={spotlight === index}
+              onToggle={() => chooseFocus(spotlight === index ? TOTAL_VIEW : index)}
             />
           ))}
           {players.length > 0 ? (
             <button
               type="button"
               className={styles.total}
-              aria-pressed={activeFocus === TOTAL_VIEW}
-              onClick={() => setFocus(TOTAL_VIEW)}
+              aria-pressed={spotlight === TOTAL_VIEW}
+              onClick={() => chooseFocus(TOTAL_VIEW)}
             >
               Totale
               <span>{totalKnockedOut} K.O.</span>

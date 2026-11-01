@@ -24,6 +24,8 @@ export interface ArenaPlayer {
 export interface ArenaSceneData {
   runNumber: number | null;
   gameName: string | null;
+  badgesEarned: number;
+  badgeTotal: number;
   players: ArenaPlayer[];
 }
 
@@ -40,6 +42,8 @@ export function toArenaSceneData(data: DashboardData): ArenaSceneData {
   return {
     runNumber: data.run?.number ?? null,
     gameName: data.run?.gameName ?? null,
+    badgesEarned: data.run?.badgesEarned ?? 0,
+    badgeTotal: data.badges.length,
     players: data.players.map(player => ({
       id: player.id,
       name: player.name,

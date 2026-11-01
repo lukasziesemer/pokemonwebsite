@@ -11,6 +11,7 @@ import {
   seeded,
   type ToonFactory,
 } from './arena-kit';
+import type { ArenaShot } from './arena-director';
 import { getArenaAnchors, resolveArenaFocus, type ArenaAnchor, type ArenaPlayer, type ArenaPokemon, type ArenaSceneData } from './arena-model';
 import { createArenaPost } from './arena-post';
 import { buildStadium, SUN_POSITION } from './arena-stadium';
@@ -28,6 +29,7 @@ const IDLE_FPS = 12;
 const INTRO_START = new THREE.Vector3(-38, 58, 102);
 const HOP_INTERVAL = 4.5;
 const HOP_DURATION = 0.45;
+const RECALL_DURATION = 0.42;
 
 const spriteVertex = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 const spriteFragment = `
@@ -72,6 +74,9 @@ interface PodiumSlot {
   burst: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   tag: HTMLSpanElement;
   pokemon: ArenaPokemon | null;
+  /** Der Stand laut Daten; weicht ab, solange der Rückruf des alten Pokémon läuft. */
+  target: ArenaPokemon | null;
+  recallStart: number | null;
   loaded: LoadedSprite | null;
   baseY: number;
   arrive: number;
@@ -94,6 +99,7 @@ export interface ArenaSceneOptions {
 export interface ArenaSceneHandle {
   update: (data: ArenaSceneData) => void;
   setFocus: (playerIndex: number) => void;
+  playShot: (shot: ArenaShot | null) => void;
   dispose: () => void;
 }
 
@@ -389,7 +395,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
 
       const slot: PodiumSlot = {
         playerIndex, slotIndex, x, z, surface, group, ball, glow, sprite, shadow, burst, tag,
-        pokemon: null, loaded: null, baseY: surface, arrive: 0, loadToken: 0,
+        pokemon: null, target: null, recallStart: null, loaded: null, baseY: surface, arrive: 0, loadToken: 0,
       };
       sprite.userData.slot = slot;
       slots.push(slot);
@@ -400,6 +406,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
 
   function clearSlot(slot: PodiumSlot) {
     slot.pokemon = null;
+    slot.recallStart = null;
     slot.loaded = null;
     slot.loadToken += 1;
     slot.ball.visible = true;
@@ -454,11 +461,21 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
       player.slots.forEach((pokemon, slotIndex) => {
         const slot = slots.find(entry => entry.playerIndex === playerIndex && entry.slotIndex === slotIndex);
         if (!slot) return;
-        if (slot.pokemon?.key === pokemon?.key) {
-          if (pokemon) {
+        const sameTarget = slot.target?.key === pokemon?.key;
+        slot.target = pokemon;
+        if (sameTarget) {
+          if (pokemon && slot.recallStart === null) {
             slot.pokemon = pokemon;
             slot.tag.textContent = pokemon.name;
           }
+          return;
+        }
+        if (slot.recallStart !== null) return;
+        if (!reducedMotion && slot.sprite.visible) {
+          slot.recallStart = seconds;
+          slot.tag.hidden = true;
+          slot.shadow.visible = false;
+          busyUntil = Math.max(busyUntil, seconds + RECALL_DURATION + 1);
           return;
         }
         if (!pokemon) {
@@ -475,8 +492,14 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
 
   /* Kamera */
   const totalShot = { position: new THREE.Vector3(0, 16, 90), target: new THREE.Vector3(0, 12.4, -8) };
+  const craneShot = { position: INTRO_START, target: totalShot.target };
+  const boardShot = {
+    position: stadium.scoreboardCenter.clone().add(new THREE.Vector3(0, -6, 74)),
+    target: stadium.scoreboardCenter,
+  };
   let shot = totalShot;
   let focus = -1;
+  let directorShot: ArenaShot | null = null;
   let portrait = false;
   let playerFit = 1;
   let viewWidth = 1;
@@ -493,9 +516,20 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
     };
   };
 
+  const focusShot = () => (focus < 0 || !anchors[focus] ? totalShot : playerShot(focus));
+
+  const selectShot = () => {
+    if (directorShot?.kind === 'player' && anchors[directorShot.playerIndex]) return playerShot(directorShot.playerIndex);
+    if (directorShot?.kind === 'board') return boardShot;
+    // Hochkant schneidet jede weite Einstellung die Podeste ab.
+    if (directorShot?.kind === 'crane' && !portrait) return craneShot;
+    if (directorShot?.kind === 'total' && !portrait) return totalShot;
+    return focusShot();
+  };
+
   const applyFocus = (next: number) => {
     focus = next;
-    shot = focus < 0 || !anchors[focus] ? totalShot : playerShot(focus);
+    shot = selectShot();
     needsFrames = Math.max(needsFrames, 4);
   };
 
@@ -607,9 +641,23 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
       const { sprite, shadow, ball, burst, tag, loaded } = slot;
       if (!loaded) return;
 
+      if (slot.recallStart !== null) {
+        const progress = clamp01((seconds - slot.recallStart) / RECALL_DURATION);
+        const size = SPRITE_SIZE * (1 - easeOutCubic(clamp01(progress * 1.4 - 0.4)));
+        sprite.scale.set(size, size, 1);
+        sprite.material.uniforms.uFlash.value = clamp01(progress * 3);
+        if (progress >= 1) {
+          clearSlot(slot);
+          if (slot.target) assignSlot(slot, slot.target, seconds + 0.15);
+          return;
+        }
+      }
+
       sprite.parent?.getWorldPosition(worldPoint);
       const yaw = Math.atan2(camera.position.x - worldPoint.x, camera.position.z - worldPoint.z);
       sprite.rotation.y = yaw - (sprite.parent?.rotation.y ?? 0);
+
+      if (slot.recallStart !== null) return;
 
       const age = reducedMotion ? 9 : seconds - slot.arrive;
       const out = age >= 0;
@@ -682,7 +730,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
 
     sunProjected.copy(SUN_POSITION).project(camera);
     post.uniforms.uSun.value.set((sunProjected.x + 1) / 2, (sunProjected.y + 1) / 2);
-    post.uniforms.uFlare.value = focus < 0 && Math.abs(sunProjected.x) < 1.05 && Math.abs(sunProjected.y) < 1.05 ? 1 : 0;
+    post.uniforms.uFlare.value = shot === totalShot && Math.abs(sunProjected.x) < 1.05 && Math.abs(sunProjected.y) < 1.05 ? 1 : 0;
 
     post.render(renderer, scene);
   }
@@ -694,6 +742,11 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaSceneHandle {
   return {
     update: data => applyData(data, null),
     setFocus: requestFocus,
+    playShot: next => {
+      directorShot = next;
+      shot = selectShot();
+      needsFrames = Math.max(needsFrames, 4);
+    },
     dispose: () => {
       disposed = true;
       cancelAnimationFrame(frameRequest);
