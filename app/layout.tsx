@@ -71,7 +71,7 @@ export default async function RootLayout({
                 Zum Inhalt
               </a>
               <Navigation />
-              <main id="main-content" className="min-h-screen pb-16 md:pb-0">
+              <main id="main-content" className="min-h-[calc(100svh-58px)] pb-16 md:min-h-[calc(100svh-61px)] md:pb-0">
                 {children}
               </main>
               <BottomNavigation />
